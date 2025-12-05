@@ -267,15 +267,15 @@ def comprehensive_evaluation(n_iterations=100):
     """Run comprehensive evaluation on all datasets"""
     
     datasets = [
-    # 'banana',
-        # 'x_shape', 'bimodal_shared',
-                #'bimodal_different',
-                #'multimodal',
-        # 'two_moons',
+        'banana',
+        'x_shape', 'bimodal_shared',
+        'bimodal_different',
+        'multimodal',
+        'two_moons',
         'rings',
-        # "BLR", "BPR",
-        # "Weibull",
-        #         "multimodal-5"
+        "BLR", "BPR",
+        "Weibull",
+        "multimodal-5"
     ]
     # datasets = ['multimodal']
     all_results = {}
