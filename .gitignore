@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+
+# virtual environments
+venv/
+.venv/
+J-AMFVENV/
+
+# data, models, logs etc
+data/
+datasets/
+models/
+checkpoints/
+logs/
+runs/
+wandb/
+outputs/
+results/
+*.pt
+*.pth
+*.h5
+*.npz
