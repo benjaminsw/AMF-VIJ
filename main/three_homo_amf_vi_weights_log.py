@@ -612,7 +612,7 @@ if __name__ == "__main__":
     
     # Configure flow types here for consistency
     # Available options: 'realnvp', 'maf', 'iaf', 'gaussianization', 'naf', 'glow', 'nice', 'spline', 'tan'
-    flow_types = ['realnvp', 'maf', 'rbig']  # You can change this to any combination
+    flow_types = ['realnvp', 'realnvp', 'realnvp'] #, 'maf', 'rbig']  # You can change this to any combination
     
     print(f"🚀 Running experiments with flows: {flow_types}")
     print(f"📊 Available flow types: ['realnvp', 'maf', 'iaf', 'gaussianization', 'rbig', 'naf', 'glow', 'nice', 'spline', 'tan']")
