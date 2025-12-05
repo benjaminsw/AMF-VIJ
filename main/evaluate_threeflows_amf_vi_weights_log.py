@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-from threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
+from .threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
 from data.data_generator import generate_data
 from amf_vi.kde_kl_divergence import compute_kde_kl_divergence 
 import os
