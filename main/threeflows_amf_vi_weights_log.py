@@ -248,6 +248,15 @@ class SequentialAMFVI(nn.Module):
             self.weights_history.append(self.weights.detach().cpu().numpy().copy())
             self.responsibilities_history.append(normalized_likelihoods.detach().cpu().numpy().copy())
 
+            # checks both weight stability AND loss convergence
+            if epoch > 50:
+                weight_change = np.abs(self.weights_history[-1] - self.weights_history[-2]).max()
+                recent_losses = self.weight_losses[-10:]
+                loss_change = abs(recent_losses[-1] - recent_losses[0])
+                if weight_change < 1e-6 and loss_change < 1e-6:
+                    print(f"    ✅ Converged at epoch {epoch}")
+                    break
+        
             if epoch % 5 == 0:
                 print(f"    Epoch {epoch:04d} | Loss {loss.item():.4f} | Weights {self.weights.detach().cpu().numpy()}")
 
@@ -612,7 +621,7 @@ if __name__ == "__main__":
     
     # Configure flow types here for consistency
     # Available options: 'realnvp', 'maf', 'iaf', 'gaussianization', 'naf', 'glow', 'nice', 'spline', 'tan'
-    flow_types = ['realnvp', 'maf', 'rbig']  # You can change this to any combination
+    flow_types = ['realnvp', 'realnvp', 'realnvp'] #, 'maf', 'rbig']  # You can change this to any combination
     
     print(f"🚀 Running experiments with flows: {flow_types}")
     print(f"📊 Available flow types: ['realnvp', 'maf', 'iaf', 'gaussianization', 'rbig', 'naf', 'glow', 'nice', 'spline', 'tan']")
