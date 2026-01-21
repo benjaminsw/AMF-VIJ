@@ -21,6 +21,7 @@ results_homo_rbig/
 results_homo_realNVP/
 real_data/data
 real_data/results
+real_data/flows/data
 *.pt
 *.pth
 *.h5
