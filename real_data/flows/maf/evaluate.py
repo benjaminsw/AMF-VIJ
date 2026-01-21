@@ -156,6 +156,15 @@ def save_results_summary(dataset, test_nll, test_bpd, save_path):
 
 
 if __name__ == "__main__":
+        # Set seed for reproducibility
+    torch.manual_seed(2026)
+    np.random.seed(2026)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(2026)
+        
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
     import argparse
     
     parser = argparse.ArgumentParser()
@@ -199,7 +208,9 @@ if __name__ == "__main__":
     )
     
     # Setup results directory
-    results_dir = f'/home/claude/maf_results/{args.dataset}'
+    #results_dir = f'/home/claude/maf_results/{args.dataset}'
+    #results_dir = f'/home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results/{args.dataset}'
+    results_dir = os.path.join(RESULTS_BASE, 'maf_results', args.dataset)
     samples_dir = os.path.join(results_dir, 'samples')
     os.makedirs(samples_dir, exist_ok=True)
     

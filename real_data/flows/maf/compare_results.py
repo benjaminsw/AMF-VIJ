@@ -9,6 +9,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 
+# Add at top after imports:
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '../../../'))
+RESULTS_BASE = os.path.join(PROJECT_ROOT, 'real_data/results')
+
 
 def load_training_log(log_path):
     """Load training log CSV."""
@@ -39,8 +44,11 @@ def create_comparison_table(dataset='mnist'):
     """Create comparison table for a dataset."""
     
     # Paths
-    maf_base = f'/home/claude/maf_results/{dataset}'
-    realnvp_base = f'/home/benjamin/Documents/AMF-VIJ/real_data/results'
+    # maf_base = f'/home/claude/maf_results/{dataset}'
+    # maf_base = f'/home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results/{dataset}'
+    maf_base = os.path.join(RESULTS_BASE, 'maf_results', dataset)
+    #realnvp_base = f'/home/benjamin/Documents/AMF-VIJ/real_data/results'
+    realnvp_base = RESULTS_BASE
     
     # MAF results
     maf_summary = load_results_summary(os.path.join(maf_base, 'results_summary.txt'))
@@ -87,7 +95,8 @@ def plot_training_curves(dataset='mnist', save_path=None):
     """Plot training curves comparison."""
     
     # Load logs
-    maf_log = load_training_log(f'/home/claude/maf_results/{dataset}/logs/training.log')
+    #maf_log = load_training_log(f'/home/claude/maf_results/{dataset}/logs/training.log')
+    maf_log = load_training_log(f'/home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results/{dataset}/logs/training.log')
     realnvp_log = load_training_log(
         f'/home/benjamin/Documents/AMF-VIJ/real_data/results/logs/{dataset}_training.log'
     )
@@ -135,7 +144,8 @@ def plot_training_curves(dataset='mnist', save_path=None):
     plt.close()
 
 
-def generate_comparison_report(output_dir='/home/claude/maf_results'):
+#def generate_comparison_report(output_dir='/home/claude/maf_results'):
+def generate_comparison_report(output_dir='/home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results'):
     """Generate comprehensive comparison report."""
     
     os.makedirs(output_dir, exist_ok=True)
@@ -224,7 +234,8 @@ def create_comparison_latex_table():
     latex += "\\end{table}\n"
     
     # Save
-    output_path = '/home/claude/maf_results/comparison_table.tex'
+    #output_path = '/home/claude/maf_results/comparison_table.tex'
+    output_path = '/home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results/comparison_table.tex'
     with open(output_path, 'w') as f:
         f.write(latex)
     
@@ -252,7 +263,8 @@ if __name__ == "__main__":
         print("="*60)
         print(table.to_string(index=False))
         
-        plot_path = f'/home/claude/maf_results/{args.dataset}_comparison.png'
+        # plot_path = f'/home/claude/maf_results/{args.dataset}_comparison.png'
+        plot_path = f'/home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results/{args.dataset}_comparison.png'
         plot_training_curves(args.dataset, save_path=plot_path)
 
 

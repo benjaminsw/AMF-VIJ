@@ -12,6 +12,11 @@ import logging
 from tqdm import tqdm
 import numpy as np
 
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '../../../'))  # Go up to AMF-VIJ/
+RESULTS_BASE = os.path.join(PROJECT_ROOT, 'real_data/results')
+
 # Add parent directory to path for data_preprocessing import
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
@@ -28,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 class RealNVPTrainer:
     """Trainer for RealNVP model."""
-    
     def __init__(
         self,
         dataset='mnist',
@@ -41,6 +45,15 @@ class RealNVPTrainer:
         use_lr_decay=False,
         device='cuda'
     ):
+        
+        # Set seed for reproducibility
+        torch.manual_seed(2026)
+        np.random.seed(2026)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(2026)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        
         """
         Args:
             dataset: 'mnist' or 'cifar10'
@@ -58,7 +71,9 @@ class RealNVPTrainer:
         self.use_lr_decay = use_lr_decay
         
         # Setup directories
-        self.results_dir = '/home/benjamin/Documents/AMF-VIJ/real_data/results'
+        #self.results_dir = '/home/benjamin/Documents/AMF-VIJ/real_data/results'
+        #self.results_dir = '/home/benjamin/Documents/AMF-VIJ/real_data/results/realnvp_results'
+        self.results_dir = os.path.join(RESULTS_BASE, 'realnvp_results')  # CHANGED
         self.checkpoint_dir = os.path.join(self.results_dir, 'checkpoints')
         self.samples_dir = os.path.join(self.results_dir, 'samples')
         self.log_dir = os.path.join(self.results_dir, 'logs')

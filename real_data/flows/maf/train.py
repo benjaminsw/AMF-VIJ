@@ -12,6 +12,12 @@ import logging
 from tqdm import tqdm
 import numpy as np
 
+
+# Get script directory and build relative paths
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '../../../'))  # Go up to AMF-VIJ/
+RESULTS_BASE = os.path.join(PROJECT_ROOT, 'real_data/results')
+
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
@@ -53,12 +59,24 @@ class MAFTrainer:
             use_lr_decay: Whether to use learning rate decay
             device: 'cuda' or 'cpu'
         """
+        
+        # Set seed for reproducibility
+        torch.manual_seed(2026)
+        np.random.seed(2026)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(2026)
+            
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        
         self.dataset = dataset
         self.device = device
         self.use_lr_decay = use_lr_decay
         
         # Setup directories
-        base_dir = '/home/claude/maf_results'
+        #base_dir = '/home/claude/maf_results'
+        #base_dir = '/home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results'
+        base_dir = os.path.join(RESULTS_BASE, 'maf_results')
         self.results_dir = os.path.join(base_dir, dataset)
         self.checkpoint_dir = os.path.join(self.results_dir, 'checkpoints')
         self.samples_dir = os.path.join(self.results_dir, 'samples')
@@ -309,8 +327,9 @@ if __name__ == "__main__":
     # Auto-run both datasets if --auto or no dataset specified
     if args.auto or args.dataset is None:
         configs = [
-            {'dataset': 'mnist', 'hidden_dim': 512, 'num_layers': 5},
-            {'dataset': 'cifar10', 'hidden_dim': 1024, 'num_layers': 10}
+            {'dataset': 'cifar10', 'hidden_dim': 1024, 'num_layers': 10},
+            {'dataset': 'mnist', 'hidden_dim': 512, 'num_layers': 5}
+            
         ]
     else:
         configs = [{

@@ -162,9 +162,13 @@ Examples:
     if success:
         logger.info("✓ All operations completed successfully!")
         logger.info("\nResults available in:")
-        logger.info("  - /home/claude/maf_results/mnist/")
-        logger.info("  - /home/claude/maf_results/cifar10/")
-        logger.info("  - /home/claude/maf_results/comparison_summary.txt")
+        #logger.info("  - /home/claude/maf_results/mnist/")
+        #logger.info("  - /home/claude/maf_results/cifar10/")
+        #logger.info("  - /home/claude/maf_results/comparison_summary.txt")
+        logger.info("  - /home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results/mnist/")
+        logger.info("  - /home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results/cifar10/")
+        logger.info("  - /home/benjamin/Documents/AMF-VIJ/real_data/results/maf_results/comparison_summary.txt")
+
     else:
         logger.error("✗ Some operations failed. Check logs above.")
     logger.info("="*60 + "\n")

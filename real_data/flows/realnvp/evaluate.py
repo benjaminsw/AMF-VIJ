@@ -12,6 +12,11 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import logging
 
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '../../../'))
+RESULTS_BASE = os.path.join(PROJECT_ROOT, 'real_data/results')
+
 # Add parent directory to path for data_preprocessing import
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
@@ -147,6 +152,15 @@ def interpolate_latents(model, num_steps=8, device='cuda'):
 
 
 if __name__ == "__main__":
+    # Set seed for reproducibility
+    torch.manual_seed(2026)
+    np.random.seed(2026)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(2026)
+        
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
     import argparse
     
     parser = argparse.ArgumentParser()
@@ -185,7 +199,9 @@ if __name__ == "__main__":
     logger.info("Generating samples...")
     samples = generate_samples(model, num_samples=args.num_samples, device=args.device)
     
-    results_dir = '/home/benjamin/Documents/AMF-VIJ/real_data/results/samples'
+    # results_dir = '/home/benjamin/Documents/AMF-VIJ/real_data/results/samples'
+    # results_dir = '/home/benjamin/Documents/AMF-VIJ/real_data/results/realnvp_results/samples'
+    results_dir = os.path.join(RESULTS_BASE, 'realnvp_results/samples') 
     save_path = os.path.join(results_dir, f'{args.dataset}_samples.png')
     visualize_samples(samples, save_path=save_path)
     
