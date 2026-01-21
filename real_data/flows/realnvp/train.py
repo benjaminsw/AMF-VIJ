@@ -279,8 +279,9 @@ if __name__ == "__main__":
     # Auto-run both datasets if --auto or no dataset specified
     if args.auto or args.dataset is None:
         configs = [
-            {'dataset': 'mnist', 'num_scales': 2},
-            {'dataset': 'cifar10', 'num_scales': 3}
+            
+            {'dataset': 'cifar10', 'num_scales': 3},
+            {'dataset': 'mnist', 'num_scales': 2}
         ]
     else:
         configs = [{'dataset': args.dataset, 'num_scales': args.num_scales or 2}]
