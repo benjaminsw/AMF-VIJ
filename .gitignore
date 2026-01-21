@@ -8,7 +8,6 @@ venv/
 J-AMFVENV/
 
 # data, models, logs etc
-data/
 datasets/
 models/
 checkpoints/
@@ -17,7 +16,13 @@ runs/
 wandb/
 outputs/
 results/
+results_homo_maf/
+results_homo_rbig/
+results_homo_realNVP/
+real_data/data
+real_data/results
 *.pt
 *.pth
 *.h5
 *.npz
+
