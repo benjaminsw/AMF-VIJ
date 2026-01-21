@@ -22,6 +22,8 @@ results_homo_realNVP/
 real_data/data
 real_data/results
 real_data/flows/data
+real_data/flows/realnvp/data/
+*.tar.gz
 *.pt
 *.pth
 *.h5
