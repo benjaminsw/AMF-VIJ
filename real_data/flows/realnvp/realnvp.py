@@ -6,7 +6,7 @@
 import torch
 import torch.nn as nn
 import logging
-from .coupling_layers import (  # Changed: relative import
+from coupling_layers import (  # Changed: relative import
     AffineCouplingLayer,
     create_checkerboard_mask,
     create_channel_mask,

@@ -15,7 +15,7 @@ import logging
 # Add parent directory to path for data_preprocessing import
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
-from .realnvp import RealNVP  # Changed: relative import
+from realnvp import RealNVP  # Changed: relative import
 from data_preprocessing import get_mnist_loaders, get_cifar10_loaders
 
 logging.basicConfig(level=logging.INFO)

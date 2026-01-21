@@ -15,7 +15,7 @@ import numpy as np
 # Add parent directory to path for data_preprocessing import
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
-from .realnvp import RealNVP  # Changed: relative import
+from realnvp import RealNVP  # Changed: relative import
 from data_preprocessing import get_mnist_loaders, get_cifar10_loaders
 
 # Setup logging
@@ -256,47 +256,61 @@ class RealNVPTrainer:
         
         logger.info(f"Training complete! Best BPD: {self.best_bpd:.3f}")
 
+# VERSION: RNV-v1.1
+# CHANGELOG: Added auto-run for both MNIST and CIFAR-10
 
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='mnist', choices=['mnist', 'cifar10'])
+    parser.add_argument('--auto', action='store_true', help='Train both MNIST and CIFAR-10')
+    parser.add_argument('--dataset', type=str, default=None, choices=['mnist', 'cifar10'])
     parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--hidden_channels', type=int, default=64, help='Feature maps (32 or 64)')
-    parser.add_argument('--num_blocks', type=int, default=8, help='Residual blocks (4 or 8)')
-    parser.add_argument('--num_scales', type=int, default=2, help='Multi-scale levels (2 or 3)')
-    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
-    parser.add_argument('--use_lr_decay', action='store_true', help='Use learning rate decay')
+    parser.add_argument('--hidden_channels', type=int, default=64)
+    parser.add_argument('--num_blocks', type=int, default=8)
+    parser.add_argument('--num_scales', type=int, default=None)
+    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--use_lr_decay', action='store_true')
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     
     args = parser.parse_args()
     
-    # Create trainer
-    trainer = RealNVPTrainer(
-        dataset=args.dataset,
-        batch_size=args.batch_size,
-        hidden_channels=args.hidden_channels,
-        num_blocks=args.num_blocks,
-        num_scales=args.num_scales,
-        lr=args.lr,
-        weight_decay=5e-5,
-        use_lr_decay=args.use_lr_decay,
-        device=args.device
-    )
+    # Auto-run both datasets if --auto or no dataset specified
+    if args.auto or args.dataset is None:
+        configs = [
+            {'dataset': 'mnist', 'num_scales': 2},
+            {'dataset': 'cifar10', 'num_scales': 3}
+        ]
+    else:
+        configs = [{'dataset': args.dataset, 'num_scales': args.num_scales or 2}]
     
-    # Train
-    trainer.train(num_epochs=args.epochs)
+    # Train each configuration
+    for config in configs:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Starting training: {config['dataset'].upper()}")
+        logger.info(f"{'='*60}\n")
+        
+        trainer = RealNVPTrainer(
+            dataset=config['dataset'],
+            batch_size=args.batch_size,
+            hidden_channels=args.hidden_channels,
+            num_blocks=args.num_blocks,
+            num_scales=config['num_scales'],
+            lr=args.lr,
+            weight_decay=5e-5,
+            use_lr_decay=args.use_lr_decay,
+            device=args.device
+        )
+        
+        trainer.train(num_epochs=args.epochs)
+        
+        
+'''
+**CHANGELOG**:
+v1.1 (2025-01-21):
+- Added auto-run mode for both MNIST and CIFAR-10
+- Automatic num_scales selection per dataset
+- Sequential training with clear separation logs
+'''
 
-
-# CHANGELOG
-"""
-v1.0 (2025-01-20):
-- Complete training pipeline with optimizer setup
-- Bits per dimension evaluation
-- Checkpoint saving (latest + best)
-- Learning rate scheduling (optional)
-- Error logging for NaN/Inf detection
-- Command-line arguments for experimentation
-"""
