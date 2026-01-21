@@ -17,9 +17,18 @@ class ImagePreprocessing:
     
     def logit_transform(self, x):
         """Transform from [0, 256] to unbounded space."""
-        # Scale to [0, 1] then apply logit with alpha smoothing
+        # Scale to [0, 1]
         x = x / 256.0
-        x = self.alpha + (1 - self.alpha) * x
+        
+        # CRITICAL: Clamp before alpha smoothing
+        x = torch.clamp(x, 0.0, 1.0)
+        
+        # Alpha smoothing: [0, 1] -> [alpha, 1-alpha]
+        x = self.alpha + (1 - 2*self.alpha) * x  # Fixed: symmetric
+        
+        # CRITICAL: Final clamp to prevent boundary issues
+        x = torch.clamp(x, self.alpha, 1 - self.alpha)
+        
         return torch.logit(x)
     
     def __call__(self, x):
