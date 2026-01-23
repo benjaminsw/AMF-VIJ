@@ -89,6 +89,10 @@ class SequentialAMFVI(nn.Module):
         self.weights_history = []
         self.responsibilities_history = []  # optional: per-epoch average responsibilities
         self.weight_losses = []
+        
+        # Track resampling statistics
+        self.resample_count_stage1 = 0
+        self.resample_count_stage2 = 0
 
     def safe_log_prob_extraction(self, log_prob_tensor):
         """Extract log prob with NaN handling - Phase 1 fix"""
@@ -99,7 +103,16 @@ class SequentialAMFVI(nn.Module):
             return -100.0  # Equivalent to very low probability
         return mean_log_prob
     
-    def train_flows_independently(self, data, epochs=1000, lr=1e-4):
+    def train_flows_independently(
+        self, 
+        data, 
+        epochs=1000, 
+        lr=1e-4,
+        # NEW PARAMETERS:
+        data_pool=None,           # Optional fixed pool
+        resample_frequency=10,    # How often to resample (epochs)
+        n_samples_per_batch=None  # Batch size for resampling
+    ):
         """Stage 1: Train each flow independently."""
         print("🔄 Stage 1: Training flows independently...")
         
@@ -116,7 +129,22 @@ class SequentialAMFVI(nn.Module):
                 # Handle non-parametric flows (like RBIG)
                 if hasattr(flow, 'fit_to_data'):
                     print("    Using fit_to_data() method...")
-                    flow.fit_to_data(data, validate_reconstruction=False)  # Skip validation for speed
+                    
+                    # Optionally use fresh batch for non-parametric fitting
+                    if data_pool is None and n_samples_per_batch:
+                        # Lazy: generate larger batch for better fit
+                        dataset_name = getattr(self, 'dataset_name', 'multimodal')
+                        fit_data = get_fresh_batch(
+                            dataset_name, 
+                            n_samples_per_batch * 3,  # Use 3x samples for better estimation
+                            data.device, 
+                            seed=2025
+                        )
+                        print(f"    Using {fit_data.size(0)} samples for non-parametric fitting")
+                    else:
+                        fit_data = data
+                    
+                    flow.fit_to_data(fit_data, validate_reconstruction=False)
                     
                     # Compute actual loss trajectory for visualization consistency
                     losses = []
@@ -157,11 +185,36 @@ class SequentialAMFVI(nn.Module):
             losses = []
             
             for epoch in range(epochs):
+                # Lazy resampling: generate fresh batch periodically
+                if resample_frequency > 0 and epoch % resample_frequency == 0 and epoch > 0:
+                    if data_pool is not None:
+                        # Sample from fixed pool
+                        batch_size = data.size(0)
+                        indices = torch.randperm(data_pool.size(0))[:batch_size]
+                        current_data = data_pool[indices]
+                    else:
+                        # Lazy sampling: generate fresh batch
+                        dataset_name = getattr(self, 'dataset_name', 'multimodal')
+                        batch_size = n_samples_per_batch if n_samples_per_batch else data.size(0)
+                        current_data = get_fresh_batch(
+                            dataset_name, 
+                            batch_size, 
+                            data.device, 
+                            seed=2025 + epoch  # Different seed per epoch
+                        )
+                        
+                    self.resample_count_stage1 += 1
+                    
+                    if epoch % 50 == 0 and resample_frequency > 0:
+                        print(f"    Epoch {epoch}: Resampled {current_data.size(0)} fresh samples")
+                else:
+                    current_data = data
+                
                 optimizer.zero_grad()
                 
                 try:
                     # Individual flow loss (negative log-likelihood)
-                    log_prob = flow.log_prob(data)
+                    log_prob = flow.log_prob(current_data)
                     loss = -log_prob.mean()
                     
                     # Check if loss requires grad
@@ -192,7 +245,15 @@ class SequentialAMFVI(nn.Module):
         self.flows_trained = True
         return flow_losses
 
-    def train_mixture_weights_moving_average(self, data, epochs=500):
+    def train_mixture_weights_moving_average(
+        self, 
+        data, 
+        epochs=500,
+        # NEW PARAMETERS:
+        data_pool=None,           # Optional fixed pool
+        resample_frequency=1,     # How often to resample (epochs, default=every epoch)
+        n_samples_per_batch=1000  # Batch size for fresh samples
+    ):
         if not self.flows_trained:
             raise RuntimeError("Flows must be trained first!")
 
@@ -204,9 +265,22 @@ class SequentialAMFVI(nn.Module):
         self.weight_losses = []
 
         for epoch in range(epochs):
-            # Generate fresh data (your existing code)
-            dataset_name = getattr(self, 'dataset_name', 'multimodal')
-            fresh_data = generate_data(dataset_name, n_samples=1000).to(data.device)
+            # Lazy resampling: generate/sample fresh batch
+            if data_pool is not None:
+                # Sample from fixed pool
+                indices = torch.randperm(data_pool.size(0))[:n_samples_per_batch]
+                fresh_data = data_pool[indices]
+            else:
+                # Lazy sampling: generate fresh batch with epoch-specific seed
+                dataset_name = getattr(self, 'dataset_name', 'multimodal')
+                fresh_data = get_fresh_batch(
+                    dataset_name, 
+                    n_samples_per_batch, 
+                    data.device, 
+                    seed=3000 + epoch  # Different seed per epoch for diversity
+                )
+                
+            self.resample_count_stage2 += 1
 
             # Average log-probs per expert on fresh data (your existing code)
             flow_log_probs = []
@@ -389,8 +463,39 @@ def _to_np(x):
         pass
     return np.asarray(x)
 
+def get_fresh_batch(dataset_name, n_samples, device, seed=None):
+    """
+    Lazy sampling: Generate fresh batch on-demand.
+    
+    Args:
+        dataset_name: Dataset to sample from
+        n_samples: Number of samples to generate
+        device: torch device
+        seed: Optional random seed for reproducibility
+    
+    Returns:
+        Fresh batch of samples
+    """
+    if seed is not None:
+        # Set seed for reproducible sampling
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+    
+    batch = generate_data(dataset_name, n_samples=n_samples)
+    return batch.to(device)
 
-def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plots=True, save_plots=False):
+
+def train_sequential_amf_vi(
+    dataset_name='multimodal', 
+    flow_types=None, 
+    show_plots=True, 
+    save_plots=False,
+    # NEW LAZY SAMPLING PARAMETERS:
+    n_samples_per_batch=1000,        # Subset size for each iteration
+    resample_frequency_stage1=10,    # How often to resample in Stage 1 (epochs)
+    resample_frequency_stage2=1,     # How often to resample in Stage 2 (epochs) 
+    use_lazy_sampling=True           # Toggle lazy vs fixed pool
+):
     """Train sequential AMF-VI with learnable weights."""
     
     print(f"🚀 Sequential AMF-VI Experiment on {dataset_name}")
@@ -402,10 +507,19 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
     
     print(f"Using flows: {flow_types}")
     
-    # Generate data
-    data = generate_data(dataset_name, n_samples=1000)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = data.to(device)
+
+    if use_lazy_sampling:
+        # Lazy: generate initial batch, will resample during training
+        print(f"🔄 Using lazy sampling: {n_samples_per_batch} samples per batch")
+        data = get_fresh_batch(dataset_name, n_samples_per_batch, device, seed=2025)
+        data_pool = None  # No pre-generated pool
+    else:
+        # Fixed pool: generate large dataset upfront
+        print(f"📦 Using fixed pool: {n_total_samples:,} samples")
+        data_pool = generate_data(dataset_name, n_samples=n_total_samples).to(device)
+        indices = torch.randperm(n_total_samples)[:n_samples_per_batch]
+        data = data_pool[indices]
     
     # Create sequential model with specified flow types
     model = SequentialAMFVI(dim=2, flow_types=flow_types, weight_update_method='moving_average')
@@ -415,11 +529,28 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
     model = model.to(device)
     train_epochs = 3000
     ma_epochs = 500
-    # Stage 1: Train flows independently
-    flow_losses = model.train_flows_independently(data, epochs=train_epochs, lr=5e-5)
+    # Stage 1: Train flows independently with lazy resampling
+    flow_losses = model.train_flows_independently(
+        data, 
+        epochs=train_epochs, 
+        lr=5e-5,
+        data_pool=data_pool,                          # NEW: None if lazy sampling
+        resample_frequency=resample_frequency_stage1, # NEW
+        n_samples_per_batch=n_samples_per_batch       # NEW
+    )
+
+    # Stage 2: Learn mixture weights with lazy resampling
+    weight_losses = model.train_mixture_weights_moving_average(
+        data, 
+        epochs=ma_epochs,
+        data_pool=data_pool,                          # NEW: None if lazy sampling
+        resample_frequency=resample_frequency_stage2, # NEW
+        n_samples_per_batch=n_samples_per_batch       # NEW
+    )
     
-    # Stage 2: Learn mixture weights using moving average
-    weight_losses = model.train_mixture_weights_moving_average(data, epochs=ma_epochs)
+    print(f"\n📊 Resampling statistics:")
+    print(f"  Stage 1: {model.resample_count_stage1} resamples")
+    print(f"  Stage 2: {model.resample_count_stage2} resamples")
 
     # --- Evaluation and visualization (contours + robust layout) ---
     print("\n🎨 Generating visualizations...")
@@ -636,7 +767,12 @@ if __name__ == "__main__":
                 dataset_name=dataset_name,
                 flow_types=flow_types,
                 show_plots=False, 
-                save_plots=True
+                save_plots=True,
+                # NEW LAZY SAMPLING PARAMETERS:
+                use_lazy_sampling=True,           # Enable lazy sampling
+                n_samples_per_batch=1000,         # Samples per batch
+                resample_frequency_stage1=10,     # Resample every 10 epochs in Stage 1
+                resample_frequency_stage2=1       # Resample every epoch in Stage 2
             )
             
             print(f"✅ Completed {len(flow_types)}-flow model on {dataset_name}")
