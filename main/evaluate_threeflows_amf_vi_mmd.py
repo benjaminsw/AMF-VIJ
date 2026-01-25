@@ -246,7 +246,7 @@ def evaluate_single_sequential_dataset_mmd_with_iterations(dataset_name, n_itera
     
     # Create test data
     #test_data = generate_data(dataset_name, n_samples=10000)
-    test_data = get_test_data(dataset_name, n_samples=100_000)
+    test_data = get_test_data(dataset_name, n_samples=200_000)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     test_data = test_data.to(device)
     
