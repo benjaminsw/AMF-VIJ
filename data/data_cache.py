@@ -195,6 +195,11 @@ def get_split_data(dataset_name, n_samples=100_000, split_ratios=(0.6, 0.2, 0.2)
     """
     return _data_cache.get_or_create_split(dataset_name, n_samples, split_ratios)
 
+# In data_cache.py
+def get_test_data(dataset_name, n_samples=100_000):
+    """Get cached test split only"""
+    return get_split_data(dataset_name, n_samples)['test']
+
 
 def clear_cache(dataset_name=None, cache_dir="./data/datasets"):
     """

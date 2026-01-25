@@ -2,7 +2,8 @@ import torch
 import numpy as np
 import ot
 from .threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
-from data.data_generator import generate_data
+#from data.data_generator import generate_data
+from data.data_cache import get_test_data 
 import os
 import pickle
 import csv
@@ -90,7 +91,8 @@ def evaluate_single_sequential_dataset_wasserstein(dataset_name):
     print(f"{'='*50}")
     
     # Create test data
-    test_data = generate_data(dataset_name, n_samples=2000)
+    #test_data = generate_data(dataset_name, n_samples=2000)
+    test_data = get_test_data(dataset_name, n_samples=100_000)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     test_data = test_data.to(device)
     

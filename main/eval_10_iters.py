@@ -23,7 +23,8 @@ except Exception:
     except Exception:
         from threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
 # --- end robust import header ---
-from data.data_generator import generate_data
+#from data.data_generator import generate_data
+from data.data_cache import get_test_data
 
 # Import specific functions from each evaluation file
 from .evaluate_threeflows_amf_vi_weights_log import (
@@ -156,7 +157,8 @@ def evaluate_single_dataset_comprehensive(dataset_name, n_iterations=10, n_sampl
     
     try:
         # Create test data and ensure exact sample count
-        test_data = generate_data(dataset_name, n_samples=n_samples)
+        # test_data = generate_data(dataset_name, n_samples=n_samples)
+        test_data = get_test_data(dataset_name, n_samples=200_000)  # Use cached test split
         
         # Verify and fix sample count if needed
         if test_data.shape[0] != n_samples:
