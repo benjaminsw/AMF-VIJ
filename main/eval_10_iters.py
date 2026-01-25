@@ -27,15 +27,15 @@ except Exception:
 from data.data_cache import get_test_data
 
 # Import specific functions from each evaluation file
-from .evaluate_threeflows_amf_vi_weights_log import (
+from evaluate_threeflows_amf_vi_weights_log import (
     compute_cross_entropy_surrogate,
     compute_kl_divergence_metric
 )
-from .evaluate_threeflows_amf_vi_wasserstein import (
+from evaluate_threeflows_amf_vi_wasserstein import (
     compute_sliced_wasserstein_distance,
     compute_full_wasserstein_distance
 )
-from .evaluate_threeflows_amf_vi_mmd import (
+from evaluate_threeflows_amf_vi_mmd import (
     compute_mmd_comparison,
     compute_polynomial_mmd_comparison
 )

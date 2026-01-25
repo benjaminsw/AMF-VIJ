@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from .threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
+from threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
 #from data.data_generator import generate_data
 from data.data_cache import get_test_data
 import os
