@@ -408,10 +408,22 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None,
     print(f"   Val:   {val_data.shape}")
     print(f"   Test:  {test_data.shape}")
     
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     train_data = train_data.to(device)
     val_data = val_data.to(device)
     test_data = test_data.to(device)
+    
+
+    '''   
+    # Combine train+val for training
+    trainval_data = torch.cat([train_data, val_data], dim=0)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    trainval_data = trainval_data.to(device)
+    test_data = test_data.to(device)
+    '''
+    
     
     # Create model
     model = SequentialAMFVI(dim=2, flow_types=flow_types, weight_update_method='moving_average')
@@ -423,7 +435,12 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None,
     ma_epochs = 500
     
     # === Stage 1: Train flows on training data ===
+    
     flow_losses = model.train_flows_independently(train_data, epochs=train_epochs, lr=5e-5)
+    '''
+    # Combine train+val for training
+    flow_losses = model.train_flows_independently(trainval_data, epochs=train_epochs, lr=5e-5)
+    '''
     
     # === Stage 2: Learn mixture weights using validation data ===
     weight_losses = model.train_mixture_weights_moving_average(
@@ -431,6 +448,15 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None,
         val_data=val_data,      # For weight learning
         epochs=ma_epochs
     )
+    
+    '''
+    # Combine train+val for training
+    weight_losses = model.train_mixture_weights_moving_average(
+        train_data=trainval_data,
+        val_data=trainval_data,
+        epochs=ma_epochs
+    )
+    '''
 
     # === Evaluation and visualization ===
     print("\n🎨 Generating visualizations...")
@@ -641,7 +667,7 @@ if __name__ == "__main__":
                 flow_types=flow_types,
                 show_plots=False, 
                 save_plots=True,
-                n_samples=1_000_000  # Will be split 600k/200k/200k
+                n_samples=100_000  # Will be split 600k/200k/200k
             )
             
             print(f"✅ Completed {len(flow_types)}-flow model on {dataset_name}")

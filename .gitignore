@@ -9,6 +9,7 @@ J-AMFVENV/
 
 # data, models, logs etc
 datasets/
+data_ucl/
 models/
 checkpoints/
 logs/
@@ -16,9 +17,9 @@ runs/
 wandb/
 outputs/
 results/
-results_homo_maf/
-results_homo_rbig/
-results_homo_realNVP/
+results_train_test_100K/
+results_train_test_500K/
+results_train_val_test/
 real_data/data/
 real_data/results/
 real_data/flows/data/
