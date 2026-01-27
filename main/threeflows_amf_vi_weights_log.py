@@ -667,7 +667,7 @@ if __name__ == "__main__":
                 flow_types=flow_types,
                 show_plots=False, 
                 save_plots=True,
-                n_samples=100_000  # Will be split 600k/200k/200k
+                n_samples=500_000  # Will be split 600k/200k/200k
             )
             
             print(f"✅ Completed {len(flow_types)}-flow model on {dataset_name}")

@@ -79,16 +79,20 @@ def create_bimodal_different_base(n_samples=1000, separation=6, noise=0.2):
 
 
 def create_multimodal_gaussian_mixture(n_samples=1000, n_modes=3, noise=0.1):
-    """Multimodal Gaussian mixture"""
+    """Multimodal Gaussian mixture with fixed sample count"""
     modes = [(-2.0, -1.0), (2.0, 1.0), (0.0, 2.5)][:n_modes]
+    mode_var = [0.7, 1, 0.3][:n_modes]  # Hardcoded variances
+    
+    # Fix: Distribute remainder samples to avoid losing samples
     samples_per_mode = n_samples // len(modes)
-    mode_var = [0.7, 1, 0.3]
+    remainder = n_samples % len(modes)
+    
     all_samples = []
-    count = 0
-    for mode in modes:
-        samples = np.random.multivariate_normal(mode, mode_var[count] * np.eye(2), samples_per_mode)
+    for i, mode in enumerate(modes):
+        # Give extra samples to first `remainder` modes
+        n = samples_per_mode + (1 if i < remainder else 0)
+        samples = np.random.multivariate_normal(mode, mode_var[i] * np.eye(2), n)
         all_samples.append(samples)
-        count += 1
     
     data = np.vstack(all_samples)
     np.random.shuffle(data)
