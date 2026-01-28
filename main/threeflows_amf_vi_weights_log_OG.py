@@ -1,11 +1,8 @@
 """
-  Version: 2.0.0
-  AMF-VI Sequential Training with Generate-Once-Cache-Forever data strategy.
-  
-  CHANGELOG v2.0.0:
-  - Integrated data caching system for reproducible train/val/test splits
-  - Modified Stage 2 to use held-out validation data
-  - Updated visualization to use test data
+  CHANGELOG v2.1.0:
+  - Combined train+val data for both Stage 1 and Stage 2 training
+  - Modified train_mixture_weights_moving_average to use single data parameter
+  - Test data reserved exclusively for final evaluation and visualization
   """
 
 
@@ -184,7 +181,8 @@ class SequentialAMFVI(nn.Module):
         return flow_losses
     
     #def train_mixture_weights_moving_average(self, data, epochs=500):
-    def train_mixture_weights_moving_average(self, train_data, val_data, epochs=500):
+    #def train_mixture_weights_moving_average(self, train_data, val_data, epochs=500):
+    def train_mixture_weights_moving_average(self, data, epochs=500):
         """Stage 2: Learn weights using Moving Average of Likelihoods."""
         if not self.flows_trained:
             raise RuntimeError("Flows must be trained first!")
@@ -201,10 +199,19 @@ class SequentialAMFVI(nn.Module):
             fresh_data = fresh_data.to(data.device)
             '''
             
+            '''
             # Sample batch from validation data
             batch_size = min(2000, len(val_data))
             indices = torch.randperm(len(val_data), device=val_data.device)[:batch_size]
             val_batch = val_data[indices]
+            '''
+            
+            
+            # Sample batch from combined train+val data
+            batch_size = min(2000, len(data))
+            indices = torch.randperm(len(data), device=data.device)[:batch_size]
+            data_batch = data[indices]
+
             
             # Get flow log probabilities on fresh data
             flow_log_probs = []
@@ -212,14 +219,16 @@ class SequentialAMFVI(nn.Module):
                 flow.eval()
                 with torch.no_grad():
                     #log_prob = flow.log_prob(fresh_data)
-                    log_prob = flow.log_prob(val_batch)
+                    #log_prob = flow.log_prob(val_batch)
+                    log_prob = flow.log_prob(data_batch)
                     safe_log_prob = self.safe_log_prob_extraction(log_prob)
                     flow_log_probs.append(safe_log_prob)  # Use safe extraction
             
             # Convert to likelihoods and normalize (softmax)
             # flow_log_probs_tensor = torch.tensor(flow_log_probs)
             #flow_log_probs_tensor = torch.tensor(flow_log_probs, device=data.device)
-            flow_log_probs_tensor = torch.tensor(flow_log_probs, device=val_data.device)
+            #flow_log_probs_tensor = torch.tensor(flow_log_probs, device=val_data.device)
+            flow_log_probs_tensor = torch.tensor(flow_log_probs, device=data.device)
             normalized_likelihoods = F.softmax(flow_log_probs_tensor, dim=0)
             
             # Moving average update: weight_i = α * old_weight_i + (1-α) * normalized_likelihood_i
@@ -230,13 +239,15 @@ class SequentialAMFVI(nn.Module):
             
             # Compute mixture log probability for loss tracking (use original data for consistency)
             #batch_weights = self.weights.unsqueeze(0).expand(data.size(0), -1)
-            batch_weights = self.weights.unsqueeze(0).expand(train_data.size(0), -1)
+            #batch_weights = self.weights.unsqueeze(0).expand(train_data.size(0), -1)
+            batch_weights = self.weights.unsqueeze(0).expand(data.size(0), -1)
             flow_predictions = []
             for flow in self.flows:
                 flow.eval()
                 with torch.no_grad():
                     #log_prob = flow.log_prob(data)
-                    log_prob = flow.log_prob(train_data)
+                    #log_prob = flow.log_prob(train_data)
+                    log_prob = flow.log_prob(data)
                     # Handle potential NaN in individual predictions
                     if torch.any(torch.isnan(log_prob)) or torch.any(torch.isinf(log_prob)):
                         log_prob = torch.full_like(log_prob, -100.0)  # Replace NaN/inf with low prob
@@ -367,8 +378,14 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
     test_data = split_data['test']
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    '''
     train_data = train_data.to(device)
     val_data = val_data.to(device)
+    test_data = test_data.to(device
+    '''
+    
+    # ✅ Combine train+val for training flows and mixture
+    train_val_data = torch.cat([train_data, val_data], dim=0).to(device)
     test_data = test_data.to(device)
     
     # Create sequential model with specified flow types
@@ -377,18 +394,28 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
     model.results_dir = os.path.join("./", "results")
     model = model.to(device)
     train_epochs = 3000
-    ma_epochs = 500
+    ma_epochs = 1000
     
     # Stage 1: Train flows independently
     #flow_losses = model.train_flows_independently(data, epochs=train_epochs, lr=1e-3)
-    flow_losses = model.train_flows_independently(train_data, epochs=train_epochs, lr=1e-3)
+    '''
+    flow_losses = model.train_flows_independently(train_data, epochs=train_epochs, lr=5e-5)
     
     # Stage 2: Learn mixture weights using moving average
     #weight_losses = model.train_mixture_weights_moving_average(data, epochs=train_epochs)
+    
     weight_losses = model.train_mixture_weights_moving_average(
       train_data=train_data,
       val_data=val_data,
       epochs=ma_epochs 
+    )
+    '''
+    flow_losses = model.train_flows_independently(train_val_data, epochs=train_epochs, lr=1e-3)
+
+    # Stage 2: Learn mixture weights using moving average
+    weight_losses = model.train_mixture_weights_moving_average(
+    data=train_val_data,
+    epochs=ma_epochs 
     )
     
     # Evaluation and visualization
@@ -523,7 +550,19 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
 # Example usage in __main__ section:
 if __name__ == "__main__":
     # Run on 7 datasets with configurable flow types
-    datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 'multimodal', 'two_moons', 'rings']
+    datasets = [
+        'banana',
+        'x_shape',
+        'bimodal_shared',
+        'bimodal_different',
+        'multimodal',
+        'two_moons',
+        'rings',
+        "BLR",
+        "BPR",
+        "Weibull",
+        "multimodal-5",
+    ]
     
     # Configure flow types here for consistency
     # Available options: 'realnvp', 'maf', 'iaf', 'gaussianization', 'naf', 'glow', 'nice', 'spline', 'tan'
