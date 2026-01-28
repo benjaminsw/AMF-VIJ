@@ -218,7 +218,8 @@ class SequentialAMFVI(nn.Module):
             
             # Convert to likelihoods and normalize (softmax)
             # flow_log_probs_tensor = torch.tensor(flow_log_probs)
-            flow_log_probs_tensor = torch.tensor(flow_log_probs, device=data.device)
+            #flow_log_probs_tensor = torch.tensor(flow_log_probs, device=data.device)
+            flow_log_probs_tensor = torch.tensor(flow_log_probs, device=val_data.device)
             normalized_likelihoods = F.softmax(flow_log_probs_tensor, dim=0)
             
             # Moving average update: weight_i = α * old_weight_i + (1-α) * normalized_likelihood_i
