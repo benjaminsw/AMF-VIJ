@@ -211,7 +211,8 @@ class SequentialAMFVI(nn.Module):
             for flow in self.flows:
                 flow.eval()
                 with torch.no_grad():
-                    log_prob = flow.log_prob(fresh_data)
+                    #log_prob = flow.log_prob(fresh_data)
+                    log_prob = flow.log_prob(val_batch)
                     safe_log_prob = self.safe_log_prob_extraction(log_prob)
                     flow_log_probs.append(safe_log_prob)  # Use safe extraction
             
@@ -227,12 +228,14 @@ class SequentialAMFVI(nn.Module):
                 self.weights.data = new_weights
             
             # Compute mixture log probability for loss tracking (use original data for consistency)
-            batch_weights = self.weights.unsqueeze(0).expand(data.size(0), -1)
+            #batch_weights = self.weights.unsqueeze(0).expand(data.size(0), -1)
+            batch_weights = self.weights.unsqueeze(0).expand(train_data.size(0), -1)
             flow_predictions = []
             for flow in self.flows:
                 flow.eval()
                 with torch.no_grad():
-                    log_prob = flow.log_prob(data)
+                    #log_prob = flow.log_prob(data)
+                    log_prob = flow.log_prob(train_data)
                     # Handle potential NaN in individual predictions
                     if torch.any(torch.isnan(log_prob)) or torch.any(torch.isinf(log_prob)):
                         log_prob = torch.full_like(log_prob, -100.0)  # Replace NaN/inf with low prob
@@ -372,7 +375,8 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
     model.dataset_name = dataset_name  # Set dataset name for fresh data generation
     model.results_dir = os.path.join("./", "results")
     model = model.to(device)
-    train_epochs = 10000
+    train_epochs = 3000
+    ma_epochs = 500
     
     # Stage 1: Train flows independently
     #flow_losses = model.train_flows_independently(data, epochs=train_epochs, lr=1e-3)
@@ -383,7 +387,7 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
     weight_losses = model.train_mixture_weights_moving_average(
       train_data=train_data,
       val_data=val_data,
-      epochs=train_epochs
+      epochs=ma_epochs 
     )
     
     # Evaluation and visualization
