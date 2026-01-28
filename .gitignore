@@ -22,6 +22,7 @@ results_train_test_500K/
 results_train_val_test/
 results_train_val_test_500K/
 results_train_val_test_100K/
+results_train_val_test_train_test_1M
 real_data/data/
 real_data/results/
 real_data/flows/data/
