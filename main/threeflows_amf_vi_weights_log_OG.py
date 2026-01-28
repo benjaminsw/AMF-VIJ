@@ -476,9 +476,11 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
         
         # Print analysis
         print("\n📊 Analysis:")
-        print(f"Target data mean: {data.mean(dim=0).cpu().numpy()}")
+        #print(f"Target data mean: {data.mean(dim=0).cpu().numpy()}")
+        print(f"Target data mean: {test_data.mean(dim=0).cpu().numpy()}")
         print(f"Sequential model mean: {model_samples.mean(dim=0).cpu().numpy()}")
-        print(f"Target data std: {data.std(dim=0).cpu().numpy()}")
+        #print(f"Target data std: {data.std(dim=0).cpu().numpy()}")
+        print(f"Target data std: {test_data.std(dim=0).cpu().numpy()}")
         print(f"Sequential model std: {model_samples.std(dim=0).cpu().numpy()}")
         
         # Check flow diversity and learned weights
