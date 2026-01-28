@@ -1,7 +1,12 @@
-
-##################################################
-#from threeflows_amf_vi_weights_log_backup_2
-##################################################
+"""
+  Version: 2.0.0
+  AMF-VI Sequential Training with Generate-Once-Cache-Forever data strategy.
+  
+  CHANGELOG v2.0.0:
+  - Integrated data caching system for reproducible train/val/test splits
+  - Modified Stage 2 to use held-out validation data
+  - Updated visualization to use test data
+  """
 
 
 import torch
@@ -18,7 +23,8 @@ from amf_vi.flows.maf import MAFFlow
 #from amf_vi.flows.nice import NICEFlow
 #from amf_vi.flows.tan import TANFlow
 from amf_vi.flows.rbig import RBIGFlow
-from data.data_generator import generate_data
+#from data.data_generator import generate_data
+from data.data_cache import get_split_data
 import numpy as np
 import os
 import pickle
@@ -177,7 +183,8 @@ class SequentialAMFVI(nn.Module):
         self.flows_trained = True
         return flow_losses
     
-    def train_mixture_weights_moving_average(self, data, epochs=500):
+    #def train_mixture_weights_moving_average(self, data, epochs=500):
+    def train_mixture_weights_moving_average(self, train_data, val_data, epochs=500):
         """Stage 2: Learn weights using Moving Average of Likelihoods."""
         if not self.flows_trained:
             raise RuntimeError("Flows must be trained first!")
@@ -187,10 +194,17 @@ class SequentialAMFVI(nn.Module):
         weight_losses = []
         
         for epoch in range(epochs):
+            '''
             # Generate fresh data for each epoch to avoid bias
             dataset_name = getattr(self, 'dataset_name', 'multimodal')  # Default fallback
             fresh_data = generate_data(dataset_name, n_samples=1000)
             fresh_data = fresh_data.to(data.device)
+            '''
+            
+            # Sample batch from validation data
+            batch_size = min(2000, len(val_data))
+            indices = torch.randperm(len(val_data), device=val_data.device)[:batch_size]
+            val_batch = val_data[indices]
             
             # Get flow log probabilities on fresh data
             flow_log_probs = []
@@ -323,7 +337,8 @@ class SequentialAMFVI(nn.Module):
         
         return torch.cat(all_samples, dim=0)
 
-def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plots=True, save_plots=False):
+#def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plots=True, save_plots=False):
+def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plots=True, save_plots=False, n_samples=100_000):
     """Train sequential AMF-VI with learnable weights."""
     
     print(f"🚀 Sequential AMF-VI Experiment on {dataset_name}")
@@ -335,22 +350,41 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
     
     print(f"Using flows: {flow_types}")
     
+    '''
     # Generate data
     data = generate_data(dataset_name, n_samples=1000)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = data.to(device)
+    '''
+    
+    split_data = get_split_data(dataset_name, n_samples=n_samples)
+    train_data = split_data['train']
+    val_data = split_data['val']
+    test_data = split_data['test']
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    train_data = train_data.to(device)
+    val_data = val_data.to(device)
+    test_data = test_data.to(device)
     
     # Create sequential model with specified flow types
     model = SequentialAMFVI(dim=2, flow_types=flow_types, weight_update_method='moving_average')
     model.dataset_name = dataset_name  # Set dataset name for fresh data generation
+    model.results_dir = os.path.join("./", "results")
     model = model.to(device)
     train_epochs = 10000
     
     # Stage 1: Train flows independently
-    flow_losses = model.train_flows_independently(data, epochs=train_epochs, lr=1e-3)
+    #flow_losses = model.train_flows_independently(data, epochs=train_epochs, lr=1e-3)
+    flow_losses = model.train_flows_independently(train_data, epochs=train_epochs, lr=1e-3)
     
     # Stage 2: Learn mixture weights using moving average
-    weight_losses = model.train_mixture_weights_moving_average(data, epochs=train_epochs)
+    #weight_losses = model.train_mixture_weights_moving_average(data, epochs=train_epochs)
+    weight_losses = model.train_mixture_weights_moving_average(
+      train_data=train_data,
+      val_data=val_data,
+      epochs=train_epochs
+    )
     
     # Evaluation and visualization
     print("\n🎨 Generating visualizations...")
@@ -371,7 +405,8 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
         fig, axes = plt.subplots(2, n_cols, figsize=(4*n_cols, 8))
 
         # Plot target data
-        data_np = data.cpu().numpy()
+        #data_np = data.cpu().numpy()
+        data_np = test_data.cpu().numpy()
         axes[0, 0].scatter(data_np[:, 0], data_np[:, 1], alpha=0.6, c='blue', s=20)
         axes[0, 0].set_title('Target Data')
         axes[0, 0].grid(True, alpha=0.3)
@@ -471,7 +506,8 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
             'model': model, 
             'flow_losses': flow_losses, 
             'weight_losses': weight_losses,
-            'dataset': dataset_name
+            'dataset': dataset_name,
+            'metadata': split_data['metadata'] # Save metadata for reproducibility
         }, f)
     print(f"✅ Model saved to {model_path}")
     
@@ -499,7 +535,8 @@ if __name__ == "__main__":
                 dataset_name=dataset_name,
                 flow_types=flow_types,
                 show_plots=False, 
-                save_plots=True
+                save_plots=True,
+                n_samples=1_000_000  # ✅ Set 1M samples here
             )
             
             print(f"✅ Completed {len(flow_types)}-flow model on {dataset_name}")
