@@ -26,6 +26,9 @@ results_train_val_test_1M/
 results_OG_train_val_test_1M/
 results_OG_train_val_test_500K/
 results_OG_train_val_test_100K/
+results_OG_train_test_500K/
+results_OG_train_test_100K/
+results_OG_fresh_data/
 real_data/data/
 real_data/results/
 real_data/flows/data/
