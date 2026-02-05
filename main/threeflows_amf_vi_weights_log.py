@@ -649,6 +649,7 @@ if __name__ == "__main__":
         "BPR",
         "Weibull",
         "multimodal-5",
+        "Real-GMM2" ,
     ]
     
     flow_types = ['realnvp', 'maf', 'rbig']

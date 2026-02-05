@@ -648,6 +648,112 @@ def create_multimodal_gaussian_mixture5(n_samples=1000, n_modes=5, noise=0.1):
         data += np.random.normal(0, noise, data.shape)
     return torch.tensor(data, dtype=torch.float32)
 
+def create_real_gmm2_posterior_2d(
+    n_samples=2000,
+    burn_in=1000,
+    thin=2,
+    seed=42,
+    sigma=1.0,
+    prior_var=10.0,
+    dataset_name="diabetes",
+):
+    """
+    Real Bayesian target (multimodal): 2-component Gaussian mixture posterior over (mu1, mu2).
+
+    Model:
+        y_i ~ 0.5 N(mu1, sigma^2) + 0.5 N(mu2, sigma^2)
+        mu1, mu2 ~ N(0, prior_var)
+
+    Posterior is multimodal due to label-switching (mu1 <-> mu2).
+    Returns: torch.tensor of shape [n_samples, 2] with samples of (mu1, mu2).
+    """
+    import numpy as np
+    import torch
+    from sklearn.datasets import fetch_openml
+    from sklearn.preprocessing import StandardScaler
+
+    rng = np.random.default_rng(seed)
+
+    # --- Load a real dataset (numeric) and extract a 1D continuous variable ---
+    # OpenML "diabetes" is usually numeric. If it fails, fallback to a common numeric dataset.
+    try:
+        ds = fetch_openml(dataset_name, version=1, as_frame=True)
+        df = ds.data
+    except Exception:
+        ds = fetch_openml("wine-quality-red", version=1, as_frame=True)
+        df = ds.data
+
+    # pick a numeric column robustly
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if len(num_cols) == 0:
+        # last resort: coerce all to numeric and drop non-numeric
+        df2 = df.apply(lambda c: np.to_numeric(c, errors="coerce"))
+        num_cols = df2.columns[df2.notna().any()].tolist()
+        df = df2
+
+    col = num_cols[0]
+    y = df[col].to_numpy()
+    y = y[np.isfinite(y)]
+    y = y.reshape(-1, 1)
+
+    # standardize -> roughly unit scale, so sigma=1 is sensible
+    y = StandardScaler().fit_transform(y).astype(np.float64).reshape(-1)
+
+    # --- Gibbs sampler for 2-component Gaussian mixture (fixed weights 0.5/0.5, known sigma) ---
+    N = y.shape[0]
+    sigma2 = float(sigma) ** 2
+    prior_prec = 1.0 / float(prior_var)
+
+    # init
+    mu1 = rng.normal(0.0, np.sqrt(prior_var))
+    mu2 = rng.normal(0.0, np.sqrt(prior_var))
+    z = rng.integers(0, 2, size=N)  # assignments
+
+    def log_norm_pdf(x, m):
+        return -0.5 * ((x - m) ** 2) / sigma2  # constants cancel in ratios
+
+    # total iterations needed for n_samples with thinning after burn-in
+    total_needed = burn_in + n_samples * thin
+    out = np.zeros((n_samples, 2), dtype=np.float64)
+    out_i = 0
+
+    for t in range(total_needed):
+        # sample assignments z_i
+        # p(z=0|...) ∝ exp(log N(y|mu1)), p(z=1|...) ∝ exp(log N(y|mu2))
+        l0 = log_norm_pdf(y, mu1)
+        l1 = log_norm_pdf(y, mu2)
+        # stable logistic for p(z=1)
+        p1 = 1.0 / (1.0 + np.exp(l0 - l1))
+        z = (rng.random(N) < p1).astype(np.int64)
+
+        # sample mu1, mu2 from conjugate Normal posteriors
+        # mu_k | y,z ~ N(m_post, v_post)
+        for k in (0, 1):
+            yk = y[z == k]
+            nk = yk.size
+            if nk == 0:
+                # falls back to prior
+                v_post = 1.0 / prior_prec
+                m_post = 0.0
+            else:
+                lik_prec = nk / sigma2
+                v_post = 1.0 / (prior_prec + lik_prec)
+                m_post = v_post * (yk.sum() / sigma2)
+            if k == 0:
+                mu1 = rng.normal(m_post, np.sqrt(v_post))
+            else:
+                mu2 = rng.normal(m_post, np.sqrt(v_post))
+
+        # store
+        if t >= burn_in and ((t - burn_in) % thin == 0):
+            out[out_i, 0] = mu1
+            out[out_i, 1] = mu2
+            out_i += 1
+            if out_i >= n_samples:
+                break
+
+    return torch.tensor(out, dtype=torch.float32)
+ 
 
 # Registry for easy access
 DATA_GENERATORS = {
@@ -661,7 +767,9 @@ DATA_GENERATORS = {
     'BLR': create_blr_posterior_2d,
     "BPR": create_probit_posterior_2d,
     "Weibull": create_weibull_duration_posterior_2d,
-    "multimodal-5": create_multimodal_gaussian_mixture5
+    "multimodal-5": create_multimodal_gaussian_mixture5,
+    "Real-GMM2" : create_real_gmm2_posterior_2d
+ 
 }
 
 
