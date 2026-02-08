@@ -196,9 +196,20 @@ def evaluate_all_baseline_models(n_iterations=10):
     # datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 
                 # 'multimodal', 'two_moons', 'rings']
     
-    datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 
-            'multimodal', 'two_moons', 'rings', 'BLR', 'BPR', 'Weibull', 
-            'multimodal-5']
+    datasets = [
+        'banana',
+        'x_shape',
+        'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
+        'two_moons',
+        'rings',
+        "BLR",
+        "BPR",
+        "Weibull",
+        "multimodal-5",
+        "Real-GMM2",
+    ]
     
     
     model_types = ['nice', 'resflow']

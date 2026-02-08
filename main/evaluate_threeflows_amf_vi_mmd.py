@@ -322,7 +322,20 @@ def evaluate_single_sequential_dataset_mmd_with_iterations(dataset_name, n_itera
 def comprehensive_mmd_evaluation_with_iterations(n_iterations=10):
     """Comprehensive MMD evaluation of all datasets with multiple iterations"""
     
-    datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 'multimodal', 'two_moons', 'rings']
+    datasets = [
+        'banana',
+        'x_shape',
+        'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
+        'two_moons',
+        'rings',
+        "BLR",
+        "BPR",
+        "Weibull",
+        "multimodal-5",
+        "Real-GMM2",
+    ]
     all_results = {}
     
     # Evaluate each dataset

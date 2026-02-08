@@ -185,9 +185,20 @@ if __name__ == "__main__":
     # datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 
                 # 'multimodal', 'two_moons', 'rings']
     
-    datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 
-            'multimodal', 'two_moons', 'rings', 'BLR', 'BPR', 'Weibull', 
-            'multimodal-5']
+    datasets = [
+        'banana',
+        'x_shape',
+        'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
+        'two_moons',
+        'rings',
+        "BLR",
+        "BPR",
+        "Weibull",
+        "multimodal-5",
+        "Real-GMM2",
+    ]
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
