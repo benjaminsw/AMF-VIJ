@@ -641,15 +641,15 @@ if __name__ == "__main__":
         'banana',
         'x_shape',
         'bimodal_shared',
-        'bimodal_different',
-        'multimodal',
+        #'bimodal_different',
+        #'multimodal',
         'two_moons',
         'rings',
         "BLR",
         "BPR",
         "Weibull",
         "multimodal-5",
-        "Real-GMM2" ,
+        "Real-GMM2",
     ]
     
     flow_types = ['realnvp', 'maf', 'rbig']
