@@ -18,15 +18,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.data_generator import generate_data
 
 # Import evaluation functions from main directory
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'main'))
-from evaluate_threeflows_amf_vi_weights_log import (
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from main.evaluate_threeflows_amf_vi_weights_log import (
     compute_cross_entropy_surrogate,
     compute_kl_divergence_metric
 )
-from evaluate_threeflows_amf_vi_wasserstein import (
+from main.evaluate_threeflows_amf_vi_wasserstein import (
     compute_full_wasserstein_distance
 )
-from evaluate_threeflows_amf_vi_mmd import (
+from main.evaluate_threeflows_amf_vi_mmd import (
     compute_mmd_comparison
 )
 
@@ -260,7 +260,7 @@ def evaluate_all_baseline_models(n_iterations=10):
     results_dir = os.path.join(baseline_dir, 'baseline_results')
     os.makedirs(results_dir, exist_ok=True)
     
-    csv_filename = f'baseline_evaluation_{n_iterations}_iterations.csv'
+    csv_filename = f'baseline_nice-rest_evaluation_{n_iterations}_iterations.csv'
     csv_path = os.path.join(results_dir, csv_filename)
     
     try:

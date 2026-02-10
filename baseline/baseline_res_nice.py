@@ -185,6 +185,10 @@ if __name__ == "__main__":
     # datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 
                 # 'multimodal', 'two_moons', 'rings']
     
+    #datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 
+    #        'multimodal', 'two_moons', 'rings', 'BLR', 'BPR', 'Weibull', 
+    #        'multimodal-5']
+    
     datasets = [
         'banana',
         'x_shape',
@@ -216,7 +220,7 @@ if __name__ == "__main__":
         
         try:
             # Generate data
-            data = generate_data(dataset_name, n_samples=5000)
+            data = generate_data(dataset_name, n_samples=5_000) #5000
             data = data.to(device)
             print(f"Generated {len(data)} samples")
             

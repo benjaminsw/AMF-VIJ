@@ -21,15 +21,15 @@ from data.data_generator import generate_data
 from em_mixture_models import MixtureOfFlows, NormalizingFlow, AffineCouplingLayer
 
 # Import evaluation functions from main directory
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'main'))
-from evaluate_threeflows_amf_vi_weights_log import (
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from main.evaluate_threeflows_amf_vi_weights_log import (
     compute_cross_entropy_surrogate,
     compute_kl_divergence_metric
 )
-from evaluate_threeflows_amf_vi_wasserstein import (
+from main.evaluate_threeflows_amf_vi_wasserstein import (
     compute_full_wasserstein_distance
 )
-from evaluate_threeflows_amf_vi_mmd import (
+from main.evaluate_threeflows_amf_vi_mmd import (
     compute_mmd_comparison
 )
 
