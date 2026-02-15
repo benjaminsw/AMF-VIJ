@@ -16,20 +16,9 @@ logs/
 runs/
 wandb/
 outputs/
-results/
-results_train_test_100K/
-results_train_test_500K/
-results_train_val_test/
-results_train_val_test_500K/
-results_train_val_test_100K/
-results_train_val_test_1M/
-results_OG_train_val_test_1M/
-results_OG_train_val_test_500K/
-results_OG_train_val_test_100K/
-results_OG_train_test_500K/
-results_OG_train_test_100K/
-results_OG_fresh_data/
-results_Real-GMM2/
+# Ignore all results folders
+results*/
+
 real_data/data/
 real_data/results/
 real_data/flows/data/
