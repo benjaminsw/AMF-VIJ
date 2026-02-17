@@ -187,12 +187,16 @@ def evaluate_single_dataset_comprehensive(dataset_name, n_iterations=10, n_sampl
             with open(model_path, 'rb') as f:
                 saved_data = pickle.load(f)
                 model = saved_data['model']
-        else:
-            print(f"  Training new model for {dataset_name}")
-            model, _, _ = train_sequential_amf_vi(dataset_name, show_plots=False, save_plots=False)
+        #else:
+        #    print(f"  Training new model for {dataset_name}")
+        #    model, _, _ = train_sequential_amf_vi(dataset_name, show_plots=False, save_plots=False)
             
-            with open(model_path, 'wb') as f:
-                pickle.dump({'model': model, 'dataset': dataset_name}, f)
+        #    with open(model_path, 'wb') as f:
+        #        pickle.dump({'model': model, 'dataset': dataset_name}, f)
+        
+        else:
+            print(f"  ⚠️ Model not found for {dataset_name}. Skipping...")
+            return None
         
         model = model.to(device)
         model.eval()
