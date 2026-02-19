@@ -598,8 +598,8 @@ if __name__ == "__main__":
     ]
     
     flow_types = ['realnvp', 'maf', 'rbig']
-    TAU = 1.2
-    ALPHA_DIRICHLET = 3.0 #2.0 #1.5
+    TAU = 1.1 #1.2 for slightly flatter responsibilities, 1.1 for sharper (more confident) responsibilities
+    ALPHA_DIRICHLET = 1.5
     RHO = 0.9
     WARMUP_EPOCHS = 100
 
