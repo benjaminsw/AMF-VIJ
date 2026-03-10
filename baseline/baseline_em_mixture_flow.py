@@ -20,7 +20,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.data_generator import generate_data
 
 # Import model classes from separate module
-from em_mixture_models import MixtureOfFlows
+#from em_mixture_models import MixtureOfFlows
+from baseline.em_mixture_models import MixtureOfFlows
 
 # Set seed for reproducibility
 torch.manual_seed(2025)
@@ -142,6 +143,8 @@ if __name__ == "__main__":
         "Weibull",
         "multimodal-5",
         "Real-GMM2",
+        "Old-Faithful",
+        "Iris-3Class",
     ]
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

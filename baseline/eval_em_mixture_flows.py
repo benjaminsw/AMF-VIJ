@@ -18,7 +18,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.data_generator import generate_data
 
 # Import model classes from separate module
-from em_mixture_models import MixtureOfFlows, NormalizingFlow, AffineCouplingLayer
+#from em_mixture_models import MixtureOfFlows, NormalizingFlow, AffineCouplingLayer
+from baseline.em_mixture_models import MixtureOfFlows, NormalizingFlow, AffineCouplingLayer
 
 # Import evaluation functions from main directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -378,6 +379,8 @@ def comprehensive_evaluation(n_iterations=10):
         "Weibull",
         "multimodal-5",
         "Real-GMM2",
+        "Old-Faithful",
+        "Iris-3Class",
     ]
     
     all_results = {}

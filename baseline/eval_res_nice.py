@@ -209,6 +209,8 @@ def evaluate_all_baseline_models(n_iterations=10):
         "Weibull",
         "multimodal-5",
         "Real-GMM2",
+        "Old-Faithful",
+        "Iris-3Class",
     ]
     
     
