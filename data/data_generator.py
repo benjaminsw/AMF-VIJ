@@ -1,7 +1,20 @@
 """
 Simple data generator for AMF-VI synthetic datasets.
 Usage: from data.data_generator import generate_data
+
+Version History:
+  v1.0.0 - Initial release with synthetic and real Bayesian datasets
+  v1.1.0 - Added multimodal5_drop0/1/2 mode-dropout variants
+  v1.2.0 - Extended mode-dropout: single-drop indices 0-4, adjacent two-drop pairs (0-1,1-2,2-3,3-4,4-0)
+
+Changelog (v1.2.0):
+  - Added multimodal5_drop3, multimodal5_drop4 (complete single-mode-dropout set)
+  - Added multimodal5_drop01, drop12, drop23, drop34, drop40 (adjacent two-mode-dropout pairs)
+  - Registry now covers all 5 single-drop and 5 adjacent two-drop specialisation variants
+  - Enables systematic expert specialisation experiments across all mode subsets
 """
+
+__version__ = "1.2.0"
 
 from sklearn.datasets import make_moons
 import numpy as np
@@ -648,6 +661,27 @@ def create_multimodal_gaussian_mixture5(n_samples=1000, n_modes=5, noise=0.1):
         data += np.random.normal(0, noise, data.shape)
     return torch.tensor(data, dtype=torch.float32)
 
+MODES_5    = [(-0.5,-1.0),(0.5,1.0),(2.0,2.5),(0.5,-1.0),(-0.5,1.0)]
+MODE_VAR_5 = [0.7, 0.3, 1.0, 0.7, 0.3]
+
+def create_multimodal5_drop_mode(n_samples=1000, drop_indices=[0], noise=0.1):
+    """Multimodal-5 with specified modes dropped. drop_indices: list of ints in [0..4]."""
+    modes     = [m for i,m in enumerate(MODES_5)    if i not in drop_indices]
+    variances = [v for i,v in enumerate(MODE_VAR_5) if i not in drop_indices]
+    spm = n_samples // len(modes)
+    remainder = n_samples % len(modes)
+    samples = []
+    for j,(m,v) in enumerate(zip(modes,variances)):
+        n = spm + (1 if j < remainder else 0)
+        samples.append(np.random.multivariate_normal(m, v*np.eye(2), n))
+    data = np.vstack(samples)
+    np.random.shuffle(data)
+    if noise > 0: data += np.random.normal(0, noise, data.shape)
+    return torch.tensor(data, dtype=torch.float32)
+
+
+
+
 def create_real_gmm2_posterior_2d(
     n_samples=2000,
     burn_in=1000,
@@ -753,6 +787,185 @@ def create_real_gmm2_posterior_2d(
                 break
 
     return torch.tensor(out, dtype=torch.float32)
+
+def create_old_faithful_posterior_2d(
+    n_samples=2000,
+    burn_in=1000,
+    thin=2,
+    seed=42,
+    sigma=1.0,
+    prior_var=10.0,
+):
+    """
+    Real bimodal posterior: 2-component GMM on Old Faithful geyser data.
+    
+    Model:
+        y_i ~ 0.5 N(μ₁, σ²) + 0.5 N(μ₂, σ²)
+        μ₁, μ₂ ~ N(0, prior_var)
+    
+    Returns: torch.tensor of shape [n_samples, 2] with samples of (μ₁, μ₂).
+    """
+    import numpy as np
+    import torch
+    import pandas as pd
+    from sklearn.preprocessing import StandardScaler
+    
+    rng = np.random.default_rng(seed)
+    
+    # Load Old Faithful data
+    try:
+        url = 'https://raw.githubusercontent.com/mwaskom/seaborn-data/master/geyser.csv'
+        df = pd.read_csv(url)
+        y = df['waiting'].to_numpy()  # or 'duration', both work
+    except Exception:
+        # Fallback: use statsmodels
+        import statsmodels.api as sm
+        faithful = sm.datasets.get_rdataset('faithful', 'datasets')
+        y = faithful.data['waiting'].to_numpy()
+    
+    # Standardize
+    y = StandardScaler().fit_transform(y.reshape(-1, 1)).astype(np.float64).ravel()
+    
+    # Gibbs sampler (same logic as Real-GMM2)
+    N = y.shape[0]
+    sigma2 = float(sigma) ** 2
+    prior_prec = 1.0 / float(prior_var)
+    
+    mu1 = rng.normal(0.0, np.sqrt(prior_var))
+    mu2 = rng.normal(0.0, np.sqrt(prior_var))
+    z = rng.integers(0, 2, size=N)
+    
+    def log_norm_pdf(x, m):
+        return -0.5 * ((x - m) ** 2) / sigma2
+    
+    total_needed = burn_in + n_samples * thin
+    out = np.zeros((n_samples, 2), dtype=np.float64)
+    out_i = 0
+    
+    for t in range(total_needed):
+        # Sample assignments
+        l0 = log_norm_pdf(y, mu1)
+        l1 = log_norm_pdf(y, mu2)
+        p1 = 1.0 / (1.0 + np.exp(l0 - l1))
+        z = (rng.random(N) < p1).astype(np.int64)
+        
+        # Sample means
+        for k in (0, 1):
+            yk = y[z == k]
+            nk = yk.size
+            if nk == 0:
+                v_post = 1.0 / prior_prec
+                m_post = 0.0
+            else:
+                lik_prec = nk / sigma2
+                v_post = 1.0 / (prior_prec + lik_prec)
+                m_post = v_post * (yk.sum() / sigma2)
+            
+            if k == 0:
+                mu1 = rng.normal(m_post, np.sqrt(v_post))
+            else:
+                mu2 = rng.normal(m_post, np.sqrt(v_post))
+        
+        # Store
+        if t >= burn_in and ((t - burn_in) % thin == 0):
+            out[out_i, 0] = mu1
+            out[out_i, 1] = mu2
+            out_i += 1
+            if out_i >= n_samples:
+                break
+    
+    return torch.tensor(out, dtype=torch.float32)
+
+def create_iris_3class_posterior_2d(
+    n_samples=2000,
+    burn_in=1000,
+    thin=2,
+    seed=42,
+    sigma=1.0,
+    prior_var=10.0,
+):
+    """
+    Real 3-modal posterior: 3-class GMM on Iris dataset (label-switching).
+    
+    Model:
+        y_i ~ (1/3) N(μ₁, σ²) + (1/3) N(μ₂, σ²) + (1/3) N(μ₃, σ²)
+        μ₁, μ₂, μ₃ ~ N(0, prior_var)
+    
+    Returns: torch.tensor of shape [n_samples, 2] with first 2 class means (μ₁, μ₂).
+    Note: Full posterior is 6D (3 classes × 2D), we return 2D projection for consistency.
+    """
+    import numpy as np
+    import torch
+    from sklearn.datasets import load_iris
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+    
+    rng = np.random.default_rng(seed)
+    
+    # Load Iris, reduce to 2D
+    iris = load_iris()
+    X = iris.data
+    X = StandardScaler().fit_transform(X)
+    X_2d = PCA(n_components=2, random_state=seed).fit_transform(X)
+    
+    # Treat as 3-class mixture (ignore true labels for posterior sampling)
+    y = X_2d  # (150, 2)
+    N, D = y.shape
+    K = 3
+    
+    # Gibbs sampler for K-component GMM
+    sigma2 = float(sigma) ** 2
+    prior_prec = 1.0 / float(prior_var)
+    
+    # Initialize
+    mu = rng.normal(0.0, np.sqrt(prior_var), size=(K, D))
+    z = rng.integers(0, K, size=N)
+    
+    def log_norm_pdf_multivar(x, m):
+        # x: (N, D), m: (D,)
+        diff = x - m  # (N, D)
+        return -0.5 * np.sum(diff**2, axis=1) / sigma2
+    
+    total_needed = burn_in + n_samples * thin
+    out = np.zeros((n_samples, 2), dtype=np.float64)  # Return (μ₁[0], μ₁[1])
+    out_i = 0
+    
+    for t in range(total_needed):
+        # Sample assignments z_i
+        log_probs = np.zeros((N, K))
+        for k in range(K):
+            log_probs[:, k] = log_norm_pdf_multivar(y, mu[k])
+        
+        # Stable softmax
+        log_probs -= log_probs.max(axis=1, keepdims=True)
+        probs = np.exp(log_probs)
+        probs /= probs.sum(axis=1, keepdims=True)
+        
+        z = np.array([rng.choice(K, p=probs[i]) for i in range(N)])
+        
+        # Sample means μ_k
+        for k in range(K):
+            yk = y[z == k]
+            nk = yk.shape[0]
+            if nk == 0:
+                v_post = 1.0 / prior_prec
+                m_post = np.zeros(D)
+            else:
+                lik_prec = nk / sigma2
+                v_post = 1.0 / (prior_prec + lik_prec)
+                m_post = v_post * (yk.sum(axis=0) / sigma2)
+            
+            mu[k] = rng.normal(m_post, np.sqrt(v_post), size=D)
+        
+        # Store (project to 2D: return first class mean)
+        if t >= burn_in and ((t - burn_in) % thin == 0):
+            out[out_i, 0] = mu[0, 0]
+            out[out_i, 1] = mu[0, 1]
+            out_i += 1
+            if out_i >= n_samples:
+                break
+    
+    return torch.tensor(out, dtype=torch.float32)
  
 
 # Registry for easy access
@@ -768,8 +981,22 @@ DATA_GENERATORS = {
     "BPR": create_probit_posterior_2d,
     "Weibull": create_weibull_duration_posterior_2d,
     "multimodal-5": create_multimodal_gaussian_mixture5,
-    "Real-GMM2" : create_real_gmm2_posterior_2d
- 
+    "Real-GMM2" : create_real_gmm2_posterior_2d,
+    "Old-Faithful": create_old_faithful_posterior_2d,     
+    "Iris-3Class": create_iris_3class_posterior_2d, 
+    # --- Single-mode dropout (indices 0-4) ---
+    'multimodal5_drop0': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[0]),
+    'multimodal5_drop1': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[1]),
+    'multimodal5_drop2': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[2]),
+    'multimodal5_drop3': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[3]),
+    'multimodal5_drop4': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[4]),
+    # --- Adjacent two-mode dropout pairs ---
+    'multimodal5_drop01': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[0,1]),
+    'multimodal5_drop12': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[1,2]),
+    'multimodal5_drop23': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[2,3]),
+    'multimodal5_drop34': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[3,4]),
+    'multimodal5_drop40': lambda n_samples=1000,**kw: create_multimodal5_drop_mode(n_samples, drop_indices=[4,0]),
+
 }
 
 

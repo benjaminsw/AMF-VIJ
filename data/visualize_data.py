@@ -1,7 +1,11 @@
 """
 visualize_data.py — AMF-VI Dataset Visualizer
-Version: v1.1.0
+Version: v1.2.0
 Author: AMF-VI Project
+
+Changelog (v1.2.0):
+- Added Old-Faithful and Iris-3Class to REAL_DATASETS for MCMC sampling support
+- These new datasets use Gibbs sampling and require smaller n_samples
 
 Changelog (v1.1.0):
 - Added version tracking header and VERSION constant
@@ -14,7 +18,7 @@ Usage: python visualize_data.py [dataset_names...]
 """
 
 # ── Version ─────────────────────────────────────────────────────────────────
-VERSION = "v1.1.0"
+VERSION = "v1.2.0"
 
 import logging
 import sys
@@ -38,7 +42,7 @@ except ImportError as e:
 
 # ── Constants ────────────────────────────────────────────────────────────────
 # Real Bayesian datasets use MCMC — cap at smaller n to avoid long waits
-REAL_DATASETS = {"BLR", "BPR", "Weibull", "Real-GMM2"}
+REAL_DATASETS = {"BLR", "BPR", "Weibull", "Real-GMM2", "Old-Faithful", "Iris-3Class"}
 REAL_N_SAMPLES = 1000   # safe default for MCMC datasets
 COLORS = [
     "steelblue", "crimson", "forestgreen", "darkorange",
