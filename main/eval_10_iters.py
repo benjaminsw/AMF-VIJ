@@ -1,90 +1,110 @@
+"""
+File: eval_10_iters.py | Version: 2.0.0 | Date: 2026-03-10
+Abbr: EVAL-OG-BOOTSTRAP
+
+CHANGELOG v2.0.0:
+- Added bootstrap resampling per iteration: each iteration draws N_EVAL=5000 samples
+  from generated_pool (split_data['test']) and target_pool (generate_data n=25_000) independently
+- Fixed seed block: added torch.manual_seed(2025) and np.random.seed(2025) (were missing)
+- Replaced get_test_data(n_samples=200_000) with get_split_data()['test'] as generated_pool
+- Added generate_data() for fresh target_pool; removed truncation/validation guard block
+- compute_metrics_over_iterations: signature changed to (target_pool, generated_pool, ...)
+- compute_single_iteration_metrics: now accepts generated_samples param (no internal sampling)
+- Replaced all bare print() calls with logging.info/error; added logging.basicConfig
+"""
 import torch
 import numpy as np
 import os
 import pickle
 import csv
-from statistics import mean, stdev
+import sys
+import logging
 import traceback
+import random
+from statistics import mean, stdev
 
-# Import functions from the three evaluation files
-# --- robust imports regardless of how the script is launched ---
-# Supports: `python -m main.eval_10_iters` (package mode) and `python main/eval_10_iters.py` (script mode)
-import os, sys
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+# --- robust imports ---
 if __package__ in (None, ''):
-    # running as a script; add project root so `main/...` and `amf_vi/...` are importable
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 try:
-    # package-relative (works in module mode)
     from .threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
 except Exception:
-    # fallback for script mode or odd runners
     try:
         from main.threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
     except Exception:
         from threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
 # --- end robust import header ---
-#from data.data_generator import generate_data
-from data.data_cache import get_test_data
 
-# Import specific functions from each evaluation file
+from data.data_cache import get_split_data
+from data.data_generator import generate_data
+
 from .evaluate_threeflows_amf_vi_weights_log import (
     compute_cross_entropy_surrogate,
-    compute_kl_divergence_metric
+    compute_kl_divergence_metric,
 )
 from .evaluate_threeflows_amf_vi_wasserstein import (
-    compute_sliced_wasserstein_distance,
-    compute_full_wasserstein_distance
+    compute_full_wasserstein_distance,
 )
 from .evaluate_threeflows_amf_vi_mmd import (
     compute_mmd_comparison,
-    compute_polynomial_mmd_comparison
+    compute_polynomial_mmd_comparison,
 )
+
+random.seed(2025)
+torch.manual_seed(2025)
+torch.cuda.manual_seed_all(2025)
+np.random.seed(2025)
+
+# Bootstrap sample size per iteration
+N_EVAL = 5000
+# Target pool size — must be >> N_EVAL
+N_TARGET_POOL = 25_000
 
 import random
 random.seed(2025)
-torch.cuda.manual_seed_all(2025)
 
 
-def compute_single_iteration_metrics(target_samples, flow_model, dataset_name):
-    """Compute all metrics for a single iteration"""
+def compute_single_iteration_metrics(target_samples, generated_samples, flow_model, dataset_name):
+    """Compute all metrics for a single bootstrap iteration.
+
+    Args:
+        target_samples:    N_EVAL samples resampled from target_pool (for NLL/KL)
+        generated_samples: N_EVAL samples resampled from generated_pool (for W2/MMD)
+        flow_model:        Trained flow model (for log_prob / NLL)
+        dataset_name:      Dataset identifier for logging
+    """
     metrics = {}
-    
+
     try:
-        # Generate samples for this iteration - ensure matching size
-        # nll = 100
+        logging.info(f"        Target: {target_samples.shape[0]} samples, "
+                     f"Generated: {generated_samples.shape[0]} samples")
 
-        with torch.no_grad():
-            target_sample_count = target_samples.shape[0]
-            generated_samples = flow_model.sample(target_sample_count)
-            print(f"        Target: {target_sample_count} samples, Generated: {generated_samples.shape[0]} samples")
-
-        # 1. NLL (Negative Log-Likelihood) using cross-entropy surrogate
+        # 1. NLL
         try:
-            # while nll > 10:
             nll = compute_cross_entropy_surrogate(target_samples, flow_model)
             metrics['nll'] = nll
         except Exception as e:
-            print(f"Error computing NLL: {e}")
+            logging.error(f"Error computing NLL for {dataset_name}: {e}")
             traceback.print_exc()
             metrics['nll'] = None
-        
+
         # 2. KL Divergence
         try:
-            kl_div = compute_kl_divergence_metric(target_samples, flow_model, dataset_name)
+            kl_div = compute_kl_divergence_metric(target_samples, generated_samples, dataset_name)
             metrics['kl_divergence'] = kl_div
         except Exception as e:
-            print(f"Error computing KL divergence: {e}")
+            logging.error(f"Error computing KL divergence for {dataset_name}: {e}")
             traceback.print_exc()
             metrics['kl_divergence'] = None
-        
-        # 3. Sliced Wasserstein Distance - REMOVED
-        
-        # 4. Full Wasserstein Distance
+
+        # 3. Full Wasserstein Distance
         try:
             full_wd = compute_full_wasserstein_distance(target_samples, generated_samples)
             metrics['full_wasserstein'] = full_wd
         except Exception as e:
-            print(f"Error computing Full Wasserstein: {e}")
+            logging.error(f"Error computing Full Wasserstein for {dataset_name}: {e}")
             traceback.print_exc()
             metrics['full_wasserstein'] = None
         
@@ -94,124 +114,121 @@ def compute_single_iteration_metrics(target_samples, flow_model, dataset_name):
             metrics['gaussian_mmd_unbiased'] = gaussian_mmd['mmd_unbiased']
             metrics['gaussian_mmd_biased'] = gaussian_mmd['mmd_biased']
         except Exception as e:
-            print(f"Error computing Gaussian MMD: {e}")
+            logging.error(f"Error computing Gaussian MMD for {dataset_name}: {e}")
             traceback.print_exc()
             metrics['gaussian_mmd_unbiased'] = None
             metrics['gaussian_mmd_biased'] = None
-        
-        # 6. Polynomial MMD - REMOVED
-        
+
     except Exception as e:
-        print(f"Critical error in compute_single_iteration_metrics: {e}")
+        logging.error(f"Critical error in compute_single_iteration_metrics for {dataset_name}: {e}")
         traceback.print_exc()
         return None
-    
+
     return metrics
 
-def compute_metrics_over_iterations(target_samples, flow_model, dataset_name, n_iterations=10):
-    """Compute metrics over multiple iterations and return mean/std"""
+
+def compute_metrics_over_iterations(target_pool, generated_pool, flow_model, dataset_name, n_iterations=10):
+    """Compute metrics over multiple bootstrap iterations.
+
+    Each iteration independently resamples N_EVAL=5000 from target_pool and generated_pool.
+
+    Args:
+        target_pool:    Fresh generate_data pool (N_TARGET_POOL=25_000)
+        generated_pool: Cached split_data['test'] pool
+        flow_model:     Trained flow model
+        dataset_name:   Dataset identifier
+        n_iterations:   Number of bootstrap repetitions
+    """
     all_metrics = {
         'nll': [],
         'kl_divergence': [],
         'full_wasserstein': [],
         'gaussian_mmd_unbiased': [],
-        'gaussian_mmd_biased': []
+        'gaussian_mmd_biased': [],
     }
-    
-    print(f"    Computing metrics over {n_iterations} iterations...")
-    
+
+    logging.info(f"    Computing metrics over {n_iterations} bootstrap iterations (N_EVAL={N_EVAL})...")
+
     for iteration in range(n_iterations):
-        print(f"      Iteration {iteration + 1}/{n_iterations}")
-        
+        logging.info(f"      Iteration {iteration + 1}/{n_iterations}")
         try:
-            metrics = compute_single_iteration_metrics(target_samples, flow_model, dataset_name)
+            # Bootstrap resample N_EVAL from each pool independently
+            target_idx    = torch.randint(0, len(target_pool),    (N_EVAL,))
+            generated_idx = torch.randint(0, len(generated_pool), (N_EVAL,))
+            target_samples    = target_pool[target_idx]
+            generated_samples = generated_pool[generated_idx]
+
+            metrics = compute_single_iteration_metrics(
+                target_samples, generated_samples, flow_model, dataset_name
+            )
             if metrics is not None:
-                for key in all_metrics.keys():
+                for key in all_metrics:
                     if metrics.get(key) is not None:
                         all_metrics[key].append(metrics[key])
         except Exception as e:
-            print(f"Error in iteration {iteration + 1}: {e}")
+            logging.error(f"Error in iteration {iteration + 1} for {dataset_name}: {e}")
             traceback.print_exc()
             continue
-    
-    # Calculate mean and std for each metric
+
     summary_metrics = {}
     for metric_name, values in all_metrics.items():
-        if values:  # Only calculate if we have valid values
-            summary_metrics[f'{metric_name}_mean'] = mean(values)
-            summary_metrics[f'{metric_name}_std'] = stdev(values) if len(values) > 1 else 0.0
+        if values:
+            summary_metrics[f'{metric_name}_mean']  = mean(values)
+            summary_metrics[f'{metric_name}_std']   = stdev(values) if len(values) > 1 else 0.0
             summary_metrics[f'{metric_name}_count'] = len(values)
         else:
-            summary_metrics[f'{metric_name}_mean'] = None
-            summary_metrics[f'{metric_name}_std'] = None
+            summary_metrics[f'{metric_name}_mean']  = None
+            summary_metrics[f'{metric_name}_std']   = None
             summary_metrics[f'{metric_name}_count'] = 0
-    
+
     return summary_metrics
 
-def evaluate_single_dataset_comprehensive(dataset_name, n_iterations=10, n_samples=2000):
-    """Evaluate a single dataset with all metrics over multiple iterations"""
-    
-    print(f"\n{'='*60}")
-    print(f"Comprehensive Evaluation: {dataset_name.upper()} ({n_iterations} iterations)")
-    print(f"{'='*60}")
-    
+def evaluate_single_dataset_comprehensive(dataset_name, n_iterations=10):
+    """Evaluate a single dataset with all metrics over multiple bootstrap iterations."""
+
+    logging.info(f"\n{'='*60}")
+    logging.info(f"Comprehensive Evaluation [OG]: {dataset_name.upper()} ({n_iterations} iterations)")
+    logging.info(f"{'='*60}")
+
     try:
-        # Create test data and ensure exact sample count
-        # test_data = generate_data(dataset_name, n_samples=n_samples)
-        test_data = get_test_data(dataset_name, n_samples=200_000)  # Use cached test split
-        
-        # Verify and fix sample count if needed
-        if test_data.shape[0] != n_samples:
-            print(f"Warning: generate_data returned {test_data.shape[0]} samples instead of 2000")
-            if test_data.shape[0] > n_samples:
-                # Truncate to exactly 2000 samples
-                test_data = test_data[:n_samples]
-                print(f"Truncated to n_samples samples")
-            elif test_data.shape[0] >= n_samples-100:  # Allow slight shortage
-                print(f"Using {test_data.shape[0]} samples (close enough to n_samples)")
-            else:
-                print(f"Error: Not enough samples generated ({test_data.shape[0]} < {n_samples})")
-                return None
-        
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        test_data = test_data.to(device)
-        print(f"Final test data shape: {test_data.shape}")
-        
-        # Load or train model
+
+        # Build generated_pool from cached test split
+        split_data     = get_split_data(dataset_name)
+        generated_pool = split_data['test'].to(device)
+        logging.info(f"  {dataset_name}: generated_pool size={len(generated_pool)} from cached test split")
+
+        # Build fresh target_pool
+        target_pool = generate_data(dataset_name, n_samples=N_TARGET_POOL).to(device)
+        logging.info(f"  {dataset_name}: target_pool shape={target_pool.shape} (N_TARGET_POOL={N_TARGET_POOL})")
+
+        # Load model
         results_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'results')
         os.makedirs(results_dir, exist_ok=True)
         model_path = os.path.join(results_dir, f'trained_model_{dataset_name}.pkl')
-        
-        if os.path.exists(model_path):
-            print(f"  Loading existing model from {model_path}")
-            with open(model_path, 'rb') as f:
-                saved_data = pickle.load(f)
-                model = saved_data['model']
-        #else:
-        #    print(f"  Training new model for {dataset_name}")
-        #    model, _, _ = train_sequential_amf_vi(dataset_name, show_plots=False, save_plots=False)
-            
-        #    with open(model_path, 'wb') as f:
-        #        pickle.dump({'model': model, 'dataset': dataset_name}, f)
-        
-        else:
-            print(f"  ⚠️ Model not found for {dataset_name}. Skipping...")
+
+        if not os.path.exists(model_path):
+            logging.error(f"  Model not found for {dataset_name} at {model_path}. Skipping.")
             return None
-        
+
+        logging.info(f"  Loading existing model from {model_path}")
+        with open(model_path, 'rb') as f:
+            saved_data = pickle.load(f)
+            model = saved_data['model']
+
         model = model.to(device)
         model.eval()
-        
-        # Get flow names
+
         flow_type_map = {
             'RealNVPFlow': 'realnvp', 'MAFFlow': 'maf', 'NAFFlowSimplified': 'naf',
             'NICEFlow': 'nice', 'IAFFlow': 'iaf', 'GaussianizationFlow': 'gaussianization',
-            'GlowFlow': 'glow', 'TANFlow': 'tan', 'RBIGFlow': 'rbig'
+            'GlowFlow': 'glow', 'TANFlow': 'tan', 'RBIGFlow': 'rbig',
         }
-        
-        flow_names = [flow_type_map.get(flow.__class__.__name__, flow.__class__.__name__.lower()) 
-                      for flow in model.flows]
-        
-        # Get learned weights
+        flow_names = [
+            flow_type_map.get(flow.__class__.__name__, flow.__class__.__name__.lower())
+            for flow in model.flows
+        ]
+
         if hasattr(model, 'weights_trained') and model.weights_trained:
             if hasattr(model, 'log_weights'):
                 learned_weights = torch.softmax(model.log_weights, dim=0).detach().cpu().numpy()
@@ -219,53 +236,57 @@ def evaluate_single_dataset_comprehensive(dataset_name, n_iterations=10, n_sampl
                 learned_weights = model.weights.detach().cpu().numpy()
         else:
             learned_weights = np.ones(len(model.flows)) / len(model.flows)
-        
+
         # Evaluate mixture model
-        print(f"  Evaluating mixture model...")
-        mixture_metrics = compute_metrics_over_iterations(test_data, model, dataset_name, n_iterations)
-        
+        logging.info(f"  Evaluating mixture model...")
+        mixture_metrics = compute_metrics_over_iterations(
+            target_pool, generated_pool, model, dataset_name, n_iterations
+        )
+
         # Evaluate individual flows
-        print(f"  Evaluating individual flows...")
+        logging.info(f"  Evaluating individual flows...")
         individual_metrics = {}
         for i, (flow, name) in enumerate(zip(model.flows, flow_names)):
-            print(f"    Flow {i+1}/{len(flow_names)}: {name}")
+            logging.info(f"    Flow {i+1}/{len(flow_names)}: {name}")
             try:
-                flow_metrics = compute_metrics_over_iterations(test_data, flow, dataset_name, n_iterations)
+                flow_metrics = compute_metrics_over_iterations(
+                    target_pool, generated_pool, flow, dataset_name, n_iterations
+                )
                 individual_metrics[name] = flow_metrics
             except Exception as e:
-                print(f"Error evaluating flow {name}: {e}")
+                logging.error(f"Error evaluating flow {name} for {dataset_name}: {e}")
                 traceback.print_exc()
                 individual_metrics[name] = None
-        
+
         results = {
-            'dataset': dataset_name,
-            'mixture_metrics': mixture_metrics,
+            'dataset':            dataset_name,
+            'mixture_metrics':    mixture_metrics,
             'individual_metrics': individual_metrics,
-            'learned_weights': learned_weights,
-            'weights_trained': getattr(model, 'weights_trained', False),
-            'flow_names': flow_names,
-            'n_iterations': n_iterations
+            'learned_weights':    learned_weights,
+            'weights_trained':    getattr(model, 'weights_trained', False),
+            'flow_names':         flow_names,
+            'n_iterations':       n_iterations,
         }
         
         # Print summary
-        print(f"\n  Results Summary for {dataset_name}:")
-        print(f"    Mixture Model Metrics (mean ± std):")
+        logging.info(f"\n  Results Summary for {dataset_name}:")
+        logging.info(f"    Mixture Model Metrics (mean ± std):")
         for metric in ['nll', 'kl_divergence', 'full_wasserstein', 'gaussian_mmd_unbiased']:
             mean_val = mixture_metrics.get(f'{metric}_mean')
             std_val = mixture_metrics.get(f'{metric}_std')
             count_val = mixture_metrics.get(f'{metric}_count', 0)
             if mean_val is not None:
-                print(f"      {metric}: {mean_val:.6f} ± {std_val:.6f} (n={count_val})")
+                logging.info(f"      {metric}: {mean_val:.6f} ± {std_val:.6f} (n={count_val})")
             else:
-                print(f"      {metric}: FAILED")
-        
-        print(f"    Learned Weights: {learned_weights}")
-        print(f"    Weights Trained: {results['weights_trained']}")
-        
+                logging.error(f"      {metric}: FAILED")
+
+        logging.info(f"    Learned Weights: {learned_weights}")
+        logging.info(f"    Weights Trained: {results['weights_trained']}")
+
         return results
-        
+
     except Exception as e:
-        print(f"Critical error evaluating {dataset_name}: {e}")
+        logging.error(f"Critical error evaluating {dataset_name}: {e}")
         traceback.print_exc()
         return None
 
@@ -276,21 +297,24 @@ def comprehensive_evaluation(n_iterations=100):
         'banana',
         'x_shape',
         'bimodal_shared',
-        #'bimodal_different',
-        #'multimodal',
         'two_moons',
         'rings',
         "BLR",
         "BPR",
         "Weibull",
         "multimodal-5",
+        #"multimodal5_drop0",
+        #"multimodal5_drop1",
+        #"multimodal5_drop2",
         "Real-GMM2",
+        "Old-Faithful",
+        "Iris-3Class",
     ]
     # datasets = ['multimodal']
     all_results = {}
     
-    print(f"Starting Comprehensive Evaluation ({n_iterations} iterations per metric)")
-    print(f"Datasets: {datasets}")
+    logging.info(f"Starting Comprehensive Evaluation [OG] ({n_iterations} iterations per metric)")
+    logging.info(f"Datasets: {datasets}")
     
     # Evaluate each dataset
     for dataset_name in datasets:
@@ -299,16 +323,15 @@ def comprehensive_evaluation(n_iterations=100):
             if results is not None:
                 all_results[dataset_name] = results
         except Exception as e:
-            print(f"Failed to evaluate {dataset_name}: {e}")
+            logging.error(f"Failed to evaluate {dataset_name}: {e}")
             traceback.print_exc()
             continue
-    
+
     if not all_results:
-        print("No datasets could be evaluated successfully.")
+        logging.error("No datasets could be evaluated successfully.")
         return None
-    
-    # Create comprehensive CSV
-    print(f"\nCreating comprehensive results CSV...")
+
+    logging.info(f"\nCreating comprehensive results CSV...")
     summary_data = []
     
     for dataset_name, results in all_results.items():
@@ -385,26 +408,26 @@ def comprehensive_evaluation(n_iterations=100):
             ])
             writer.writerows(summary_data)
         
-        print(f"✅ {csv_filename} successfully created at {csv_path}")
+        logging.info(f"✅ {csv_filename} successfully created at {csv_path}")
         
     except Exception as e:
-        print(f"Error saving CSV: {e}")
+        logging.error(f"Error saving CSV: {e}")
         traceback.print_exc()
     
-    print(f"\nEvaluation completed! Processed {len(all_results)} datasets successfully.")
+    logging.info(f"\nEvaluation completed! Processed {len(all_results)} datasets successfully.")
     return all_results
 
 if __name__ == "__main__":
     # Run comprehensive evaluation with 10 iterations
-    print("Starting Comprehensive Evaluation Script")
-    print("=" * 80)
+    logging.info("Starting Comprehensive Evaluation Script [OG v2.0.0]")
+    logging.info("=" * 80)
     
     try:
         results = comprehensive_evaluation(n_iterations=10)
         if results:
-            print("\n🎉 Comprehensive evaluation completed successfully!")
+            logging.info("\n🎉 Comprehensive evaluation completed successfully!")
         else:
-            print("\n❌ Comprehensive evaluation failed - no results obtained.")
+            logging.error("\n❌ Comprehensive evaluation failed - no results obtained.")
     except Exception as e:
-        print(f"\n💥 Critical error in main execution: {e}")
+        logging.error(f"\n💥 Critical error in main execution: {e}")
         traceback.print_exc()

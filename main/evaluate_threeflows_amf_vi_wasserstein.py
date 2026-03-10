@@ -1,12 +1,25 @@
+"""
+File: evaluate_threeflows_amf_vi_wasserstein.py | Version: 1.1.0 | Date: 2026-03-10
+Abbr: EVAL-WASSERSTEIN
+
+CHANGELOG v1.1.0:
+- Replaced get_test_data import with get_split_data; test data loaded via split_data['test']
+- Added logging throughout; replaced bare print calls with logging.info/error
+- Updated dataset list in comprehensive_wasserstein_evaluation: 10 → 12 (+Old-Faithful, +Iris-3Class)
+- Added logging.basicConfig at module level
+"""
+
 import torch
 import numpy as np
 import ot
+import logging
 from .threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
-#from data.data_generator import generate_data
-from data.data_cache import get_test_data 
+from data.data_cache import get_split_data
 import os
 import pickle
 import csv
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # Set seed for reproducible experiments
 torch.manual_seed(2025)
@@ -86,13 +99,11 @@ def evaluate_individual_flows_wasserstein(model, test_data, flow_names, dataset_
 def evaluate_single_sequential_dataset_wasserstein(dataset_name):
     """Evaluate a single Sequential model using Wasserstein distances."""
     
-    print(f"\n{'='*50}")
-    print(f"Evaluating Wasserstein for {dataset_name.upper()} dataset")
-    print(f"{'='*50}")
-    
-    # Create test data
-    #test_data = generate_data(dataset_name, n_samples=2000)
-    test_data = get_test_data(dataset_name, n_samples=200_000)
+    logging.info(f"\n{'='*50}")
+    logging.info(f"Evaluating Wasserstein for {dataset_name.upper()} dataset")
+    logging.info(f"{'='*50}")
+
+    test_data = get_split_data(dataset_name)['test']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     test_data = test_data.to(device)
     
@@ -102,14 +113,13 @@ def evaluate_single_sequential_dataset_wasserstein(dataset_name):
     model_path = os.path.join(results_dir, f'trained_model_{dataset_name}.pkl')
     
     if os.path.exists(model_path):
-        print(f"Loading existing model from {model_path}")
+        logging.info(f"Loading existing model from {model_path}")
         with open(model_path, 'rb') as f:
             saved_data = pickle.load(f)
             model = saved_data['model']
     else:
-        print(f"Training new model for {dataset_name}")
+        logging.info(f"Training new model for {dataset_name}")
         model, _, _ = train_sequential_amf_vi(dataset_name, show_plots=False, save_plots=False)
-        
         with open(model_path, 'wb') as f:
             pickle.dump({'model': model, 'dataset': dataset_name}, f)
     
@@ -152,17 +162,21 @@ def evaluate_single_sequential_dataset_wasserstein(dataset_name):
         'flow_names': flow_names
     }
     
-    print(f"📊 Wasserstein Results for {dataset_name}:")
-    print(f"   Mixture Sliced Wasserstein: {mixture_sliced_wd:.4f}")
-    print(f"   Mixture Full Wasserstein: {mixture_full_wd:.4f}")
-    print(f"   Learned Weights: {learned_weights}")
+    logging.info(f"📊 Wasserstein Results for {dataset_name}:")
+    logging.info(f"   Mixture Sliced Wasserstein: {mixture_sliced_wd:.4f}")
+    logging.info(f"   Mixture Full Wasserstein: {mixture_full_wd:.4f}")
+    logging.info(f"   Learned Weights: {learned_weights}")
     
     return results
 
 def comprehensive_wasserstein_evaluation():
     """Comprehensive Wasserstein evaluation of all datasets."""
     
-    datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 'multimodal', 'two_moons', 'rings']
+    datasets = [
+        'banana', 'x_shape', 'bimodal_shared', 'two_moons', 'rings',
+        "BLR", "BPR", "Weibull", "multimodal-5", "Real-GMM2",
+        "Old-Faithful", "Iris-3Class",
+    ]
     all_results = {}
     
     # Evaluate each dataset
@@ -172,11 +186,11 @@ def comprehensive_wasserstein_evaluation():
             if results is not None:
                 all_results[dataset_name] = results
         except Exception as e:
-            print(f"❌ Failed to evaluate {dataset_name}: {e}")
+            logging.error(f"❌ Failed to evaluate {dataset_name}: {e}")
             continue
     
     if not all_results:
-        print("❌ No models could be evaluated.")
+        logging.error("❌ No models could be evaluated.")
         return None
     
     # Create CSV data
@@ -211,7 +225,7 @@ def comprehensive_wasserstein_evaluation():
                         'flow', 'flow_sliced_wasserstein', 'flow_full_wasserstein', 
                         'flow_weight', 'weights_trained'])
         writer.writerows(summary_data)
-        print('✅ wasserstein_comprehensive_metrics.csv successfully created')
+        logging.info('✅ wasserstein_comprehensive_metrics.csv successfully created')
     
     return all_results
 

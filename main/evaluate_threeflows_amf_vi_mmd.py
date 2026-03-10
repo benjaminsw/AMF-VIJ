@@ -1,12 +1,25 @@
+"""
+File: evaluate_threeflows_amf_vi_mmd.py | Version: 1.1.0 | Date: 2026-03-10
+Abbr: EVAL-MMD
+
+CHANGELOG v1.1.0:
+- Replaced get_test_data import with get_split_data; test data loaded via split_data['test']
+- Added logging throughout; replaced bare print calls with logging.info/error
+- Updated dataset list in comprehensive_mmd_evaluation: 10 → 12 (+Old-Faithful, +Iris-3Class)
+- Added logging.basicConfig at module level
+"""
+
 import torch
 import numpy as np
+import logging
 from .threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
-#from data.data_generator import generate_data
-from data.data_cache import get_test_data
+from data.data_cache import get_split_data
 import os
 import pickle
 import csv
 from sklearn.metrics import pairwise_distances
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # Set seed for reproducible experiments
 torch.manual_seed(2025)
@@ -222,10 +235,10 @@ def evaluate_individual_flows_mmd_with_iterations(model, test_data, flow_names, 
     """Evaluate each individual flow using MMD metrics over multiple iterations"""
     individual_metrics = {}
     
-    print(f"  Evaluating individual flows over {n_iterations} iterations...")
+    logging.info(f"  Evaluating individual flows over {n_iterations} iterations...")
     with torch.no_grad():
         for i, (flow, name) in enumerate(zip(model.flows, flow_names)):
-            print(f"    Flow {i+1}/{len(flow_names)}: {name}")
+            logging.info(f"    Flow {i+1}/{len(flow_names)}: {name}")
             mmd_metrics = compute_mmd_metrics_with_iterations(test_data, flow, n_iterations)
             individual_metrics[name] = mmd_metrics
     
@@ -233,37 +246,33 @@ def evaluate_individual_flows_mmd_with_iterations(model, test_data, flow_names, 
 
 def evaluate_mixture_model_mmd_with_iterations(model, test_data, n_iterations=10):
     """Evaluate mixture model using MMD metrics over multiple iterations"""
-    print(f"  Evaluating mixture model over {n_iterations} iterations...")
+    logging.info(f"  Evaluating mixture model over {n_iterations} iterations...")
     mixture_metrics = compute_mmd_metrics_with_iterations(test_data, model, n_iterations)
     return mixture_metrics
 
 def evaluate_single_sequential_dataset_mmd_with_iterations(dataset_name, n_iterations=10):
     """Evaluate a single Sequential model using MMD metrics over multiple iterations"""
-    
-    print(f"\n{'='*50}")
-    print(f"Evaluating MMD for {dataset_name.upper()} dataset ({n_iterations} iterations)")
-    print(f"{'='*50}")
-    
-    # Create test data
-    #test_data = generate_data(dataset_name, n_samples=10000)
-    test_data = get_test_data(dataset_name, n_samples=200_000)
+
+    logging.info(f"\n{'='*50}")
+    logging.info(f"Evaluating MMD for {dataset_name.upper()} dataset ({n_iterations} iterations)")
+    logging.info(f"{'='*50}")
+
+    test_data = get_split_data(dataset_name)['test']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     test_data = test_data.to(device)
-    
-    # Load or train model
+
     results_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'results')
     os.makedirs(results_dir, exist_ok=True)
     model_path = os.path.join(results_dir, f'trained_model_{dataset_name}.pkl')
-    
+
     if os.path.exists(model_path):
-        print(f"Loading existing model from {model_path}")
+        logging.info(f"Loading existing model from {model_path}")
         with open(model_path, 'rb') as f:
             saved_data = pickle.load(f)
             model = saved_data['model']
     else:
-        print(f"Training new model for {dataset_name}")
+        logging.info(f"Training new model for {dataset_name}")
         model, _, _ = train_sequential_amf_vi(dataset_name, show_plots=False, save_plots=False)
-        
         with open(model_path, 'wb') as f:
             pickle.dump({'model': model, 'dataset': dataset_name}, f)
     
@@ -304,18 +313,17 @@ def evaluate_single_sequential_dataset_mmd_with_iterations(dataset_name, n_itera
         'n_iterations': n_iterations
     }
     
-    # Print results with mean ± std format
-    print(f"\nMMD Results for {dataset_name} ({n_iterations} iterations):")
-    print(f"Mixture Model:")
+    logging.info(f"\nMMD Results for {dataset_name} ({n_iterations} iterations):")
+    logging.info(f"Mixture Model:")
     gauss_mix = mixture_metrics['gaussian_mmd']
     poly_mix = mixture_metrics['polynomial_mmd']
-    print(f"   Gaussian MMD (Unbiased): {gauss_mix['mmd_unbiased_mean']:.6f} ± {gauss_mix['mmd_unbiased_std']:.6f}")
-    print(f"   Gaussian MMD (Biased):   {gauss_mix['mmd_biased_mean']:.6f} ± {gauss_mix['mmd_biased_std']:.6f}")
-    print(f"   Gaussian MMD (Scikit):   {gauss_mix['mmd_biased_scikit_mean']:.6f} ± {gauss_mix['mmd_biased_scikit_std']:.6f}")
-    print(f"   Polynomial MMD (Unbiased): {poly_mix['mmd_unbiased_mean']:.6f} ± {poly_mix['mmd_unbiased_std']:.6f}")
-    print(f"   Polynomial MMD (Biased):   {poly_mix['mmd_biased_mean']:.6f} ± {poly_mix['mmd_biased_std']:.6f}")
-    print(f"   Polynomial MMD (Scikit):   {poly_mix['mmd_biased_scikit_mean']:.6f} ± {poly_mix['mmd_biased_scikit_std']:.6f}")
-    print(f"Learned Weights: {learned_weights}")
+    logging.info(f"   Gaussian MMD (Unbiased): {gauss_mix['mmd_unbiased_mean']:.6f} ± {gauss_mix['mmd_unbiased_std']:.6f}")
+    logging.info(f"   Gaussian MMD (Biased):   {gauss_mix['mmd_biased_mean']:.6f} ± {gauss_mix['mmd_biased_std']:.6f}")
+    logging.info(f"   Gaussian MMD (Scikit):   {gauss_mix['mmd_biased_scikit_mean']:.6f} ± {gauss_mix['mmd_biased_scikit_std']:.6f}")
+    logging.info(f"   Polynomial MMD (Unbiased): {poly_mix['mmd_unbiased_mean']:.6f} ± {poly_mix['mmd_unbiased_std']:.6f}")
+    logging.info(f"   Polynomial MMD (Biased):   {poly_mix['mmd_biased_mean']:.6f} ± {poly_mix['mmd_biased_std']:.6f}")
+    logging.info(f"   Polynomial MMD (Scikit):   {poly_mix['mmd_biased_scikit_mean']:.6f} ± {poly_mix['mmd_biased_scikit_std']:.6f}")
+    logging.info(f"Learned Weights: {learned_weights}")
     
     return results
 
@@ -323,18 +331,9 @@ def comprehensive_mmd_evaluation_with_iterations(n_iterations=10):
     """Comprehensive MMD evaluation of all datasets with multiple iterations"""
     
     datasets = [
-        'banana',
-        'x_shape',
-        'bimodal_shared',
-        #'bimodal_different',
-        #'multimodal',
-        'two_moons',
-        'rings',
-        "BLR",
-        "BPR",
-        "Weibull",
-        "multimodal-5",
-        "Real-GMM2",
+        'banana', 'x_shape', 'bimodal_shared', 'two_moons', 'rings',
+        "BLR", "BPR", "Weibull", "multimodal-5", "Real-GMM2",
+        "Old-Faithful", "Iris-3Class",
     ]
     all_results = {}
     
@@ -345,11 +344,11 @@ def comprehensive_mmd_evaluation_with_iterations(n_iterations=10):
             if results is not None:
                 all_results[dataset_name] = results
         except Exception as e:
-            print(f"Failed to evaluate {dataset_name}: {e}")
+            logging.error(f"Failed to evaluate {dataset_name}: {e}")
             continue
     
     if not all_results:
-        print("No models could be evaluated.")
+        logging.error("No models could be evaluated.")
         return None
     
     # Create CSV data with mean ± std
@@ -428,7 +427,7 @@ def comprehensive_mmd_evaluation_with_iterations(n_iterations=10):
             'weight', 'weights_trained', 'n_iterations'
         ])
         writer.writerows(summary_data)
-        print(f'{csv_filename} successfully created')
+        logging.info(f'{csv_filename} successfully created')
     
     return all_results
 

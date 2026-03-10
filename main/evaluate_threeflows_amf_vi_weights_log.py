@@ -1,13 +1,29 @@
+"""
+File: evaluate_threeflows_amf_vi_weights_log.py | Version: 1.1.0 | Date: 2026-03-10
+Abbr: EVAL-WEIGHTS-LOG
+
+CHANGELOG v1.1.0:
+- compute_kl_divergence_metric: signature changed from (target, flow_model, dataset_name)
+  to (target_samples, generated_samples, dataset_name) — accepts pre-sampled tensors
+  to support bootstrap resampling in eval_10_iters.py
+- Replaced get_test_data import with get_split_data; test data loaded via split_data['test']
+- Added logging throughout; replaced bare print calls with logging.info/error
+- Updated dataset list in comprehensive_sequential_evaluation: 10 → 12 (+Old-Faithful, +Iris-3Class)
+- Added logging.basicConfig at module level
+"""
+
 import torch
 import torch.nn.functional as F
 import numpy as np
+import logging
 from .threeflows_amf_vi_weights_log import SequentialAMFVI, train_sequential_amf_vi
-#from data.data_generator import generate_data
-from data.data_cache import get_test_data 
-from amf_vi.kde_kl_divergence import compute_kde_kl_divergence 
+from data.data_cache import get_split_data
+from amf_vi.kde_kl_divergence import compute_kde_kl_divergence
 import os
 import pickle
 import csv
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # Set seed for reproducible experiments
 torch.manual_seed(2025)
@@ -30,34 +46,25 @@ def compute_percentage_improvement(target_samples, mixture_model, baseline_flow)
     improvement = ((baseline_cross_entropy - mixture_cross_entropy) / baseline_cross_entropy) * 100
     return improvement
 
-def compute_kl_divergence_metric(target_samples, flow_model, dataset_name):
+def compute_kl_divergence_metric(target_samples, generated_samples, dataset_name):
     """
-    Compute KL divergence using KDE-based approach as the default method.
+    Compute KL divergence using KDE-based approach.
+    Accepts pre-sampled generated_samples tensor (bootstrap-compatible).
     Falls back to histogram method if KDE fails.
     """
-    with torch.no_grad():
-        try:
-            # Generate samples from the flow model
-            generated_samples = flow_model.sample(2000)
-            
-            # Use KDE-based KL divergence as the primary method
-            kl_divergence = compute_kde_kl_divergence(
-                target_samples=target_samples,
-                generated_samples=generated_samples,
-                grid_resolution=100,
-                bandwidth_method='scott',
-                epsilon=1e-10
-            )
-            
-            return kl_divergence
-            
-        except Exception as e:
-            print(f"Warning: KDE-based KL divergence failed for {dataset_name}: {e}")
-            print("Falling back to histogram-based method...")
-            
-            # Fallback to histogram method
-            generated_samples = flow_model.sample(2000)
-            return compute_kl_divergence_histogram(target_samples, generated_samples)
+    try:
+        kl_divergence = compute_kde_kl_divergence(
+            target_samples=target_samples,
+            generated_samples=generated_samples,
+            grid_resolution=100,
+            bandwidth_method='scott',
+            epsilon=1e-10
+        )
+        return kl_divergence
+    except Exception as e:
+        logging.error(f"KDE-based KL divergence failed for {dataset_name}: {e}")
+        logging.info("Falling back to histogram-based method...")
+        return compute_kl_divergence_histogram(target_samples, generated_samples)
 
 '''
 def compute_kl_divergence_histogram(target_samples, generated_samples):
@@ -98,31 +105,31 @@ def compute_kl_divergence_histogram(target_samples, generated_samples):
 def evaluate_individual_flows(model, test_data, flow_names, dataset_name):
     """Evaluate each individual flow against test data."""
     individual_metrics = {}
-    
+
     with torch.no_grad():
         for i, (flow, name) in enumerate(zip(model.flows, flow_names)):
-            # Compute metrics: KL divergence and cross-entropy surrogate only
-            kl_divergence = compute_kl_divergence_metric(test_data, flow, dataset_name)
-            cross_entropy = compute_cross_entropy_surrogate(test_data, flow)
-            
-            # Store metrics
-            individual_metrics[name] = {
-                'kl_divergence': kl_divergence,
-                'cross_entropy_surrogate': cross_entropy,
-            }
-    
+            try:
+                generated_samples = flow.sample(len(test_data))
+                kl_divergence = compute_kl_divergence_metric(test_data, generated_samples, dataset_name)
+                cross_entropy = compute_cross_entropy_surrogate(test_data, flow)
+                individual_metrics[name] = {
+                    'kl_divergence': kl_divergence,
+                    'cross_entropy_surrogate': cross_entropy,
+                }
+            except Exception as e:
+                logging.error(f"Error evaluating flow {name} for {dataset_name}: {e}")
+                individual_metrics[name] = {'kl_divergence': None, 'cross_entropy_surrogate': None}
+
     return individual_metrics
 
 def evaluate_single_sequential_dataset(dataset_name):
     """Evaluate or train+evaluate a single Sequential model."""
     
-    print(f"\n{'='*50}")
-    print(f"Evaluating Sequential {dataset_name.upper()} dataset")
-    print(f"{'='*50}")
-    
-    # Create test data
-    # test_data = generate_data(dataset_name, n_samples=2000)
-    test_data = get_test_data(dataset_name, n_samples=200_000)
+    logging.info(f"\n{'='*50}")
+    logging.info(f"Evaluating Sequential {dataset_name.upper()} dataset")
+    logging.info(f"{'='*50}")
+
+    test_data = get_split_data(dataset_name)['test']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     test_data = test_data.to(device)
     
@@ -132,20 +139,15 @@ def evaluate_single_sequential_dataset(dataset_name):
     model_path = os.path.join(results_dir, f'trained_model_{dataset_name}.pkl')
     
     if os.path.exists(model_path):
-        print(f"Loading existing Sequential model from {model_path}")
+        logging.info(f"Loading existing Sequential model from {model_path}")
         with open(model_path, 'rb') as f:
             saved_data = pickle.load(f)
             model = saved_data['model']
     else:
-        print(f"Training new Sequential model for {dataset_name}")
+        logging.info(f"Training new Sequential model for {dataset_name}")
         model, _, _ = train_sequential_amf_vi(dataset_name, show_plots=False, save_plots=False)
-        
-        # Save the trained model
         with open(model_path, 'wb') as f:
-            pickle.dump({
-                'model': model,
-                'dataset': dataset_name
-            }, f)
+            pickle.dump({'model': model, 'dataset': dataset_name}, f)
     
     model = model.to(device)
     
@@ -168,9 +170,10 @@ def evaluate_single_sequential_dataset(dataset_name):
         flow_name = flow_type_map.get(flow_class_name, flow_class_name.lower())
         flow_names.append(flow_name)
     
-    # Compute metrics: KL divergence, cross-entropy surrogate, and percentage improvements
     model.eval()
-    kl_divergence = compute_kl_divergence_metric(test_data, model, dataset_name)
+    with torch.no_grad():
+        generated_samples = model.sample(len(test_data))
+    kl_divergence = compute_kl_divergence_metric(test_data, generated_samples, dataset_name)
     cross_entropy = compute_cross_entropy_surrogate(test_data, model)
     
     # Compute percentage improvements for all flows dynamically
@@ -184,7 +187,7 @@ def evaluate_single_sequential_dataset(dataset_name):
     
     # Get learned weights (handle both log_weights and weights attributes)
     if model.weights_trained:
-        print('*** learned weights is extracted ***')
+        logging.info('*** learned weights is extracted ***')
         if hasattr(model, 'log_weights'):
             learned_weights = F.softmax(model.log_weights, dim=0).detach().cpu().numpy()
         else:
@@ -203,13 +206,13 @@ def evaluate_single_sequential_dataset(dataset_name):
         'flow_names': flow_names
     }
     
-    print(f"📊 Overall Sequential Mixture Results for {dataset_name}:")
-    print(f"   KL Divergence: {kl_divergence:.3f}")
-    print(f"   Cross-Entropy Surrogate: {cross_entropy:.3f}")
+    logging.info(f"📊 Overall Sequential Mixture Results for {dataset_name}:")
+    logging.info(f"   KL Divergence: {kl_divergence:.3f}")
+    logging.info(f"   Cross-Entropy Surrogate: {cross_entropy:.3f}")
     for name, improvement in percentage_improvements.items():
-        print(f"   % Improvement {name}: {improvement:.1f}%")
-    print(f"   Learned Weights: {learned_weights}")
-    print(f"   Weights Trained: {model.weights_trained}")
+        logging.info(f"   % Improvement {name}: {improvement:.1f}%")
+    logging.info(f"   Learned Weights: {learned_weights}")
+    logging.info(f"   Weights Trained: {model.weights_trained}")
     
     return results
 
@@ -217,7 +220,11 @@ def comprehensive_sequential_evaluation():
     """Comprehensive evaluation of all Sequential AMF-VI models."""
     
     # Define datasets to evaluate
-    datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different', 'multimodal', 'two_moons', 'rings']
+    datasets = [
+        'banana', 'x_shape', 'bimodal_shared', 'two_moons', 'rings',
+        "BLR", "BPR", "Weibull", "multimodal-5", "Real-GMM2",
+        "Old-Faithful", "Iris-3Class",
+    ]
     
     all_results = {}
     
@@ -228,11 +235,11 @@ def comprehensive_sequential_evaluation():
             if results is not None:
                 all_results[dataset_name] = results
         except Exception as e:
-            print(f"⚠ Failed to evaluate {dataset_name}: {e}")
+            logging.error(f"⚠ Failed to evaluate {dataset_name}: {e}")
             continue
     
     if not all_results:
-        print("⚠ No Sequential models could be trained/evaluated.")
+        logging.error("⚠ No Sequential models could be trained/evaluated.")
         return None
     
     # Create summary data and save to CSV
