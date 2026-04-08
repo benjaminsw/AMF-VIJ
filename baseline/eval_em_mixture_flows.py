@@ -1,6 +1,11 @@
 """
-Evaluation script for Baseline EM Mixture of Flows models.
-Computes metrics over 10 iterations for each dataset.
+File: eval_em_mixture_flows.py | Version: 1.1.0 | Date: 2026-03-14
+Abbr: EVAL-BASELINE-EM
+
+CHANGELOG v1.1.0:
+- Fixed compute_single_iteration_metrics: KL call now passes pre-sampled generated_samples
+  tensor instead of model object — resolves 'MixtureOfFlows has no attribute detach' error
+- generated_samples already existed from model.sample() call above the KL block
 """
 
 import torch
@@ -78,7 +83,7 @@ def compute_single_iteration_metrics(target_samples, model, dataset_name):
         
         # 2. KL Divergence
         try:
-            kl_div = compute_kl_divergence_metric(target_samples, model, dataset_name)
+            kl_div = compute_kl_divergence_metric(target_samples, generated_samples, dataset_name)
             metrics['kl_divergence'] = kl_div
         except Exception as e:
             print(f"        Error computing KL divergence: {e}")
@@ -374,13 +379,13 @@ def comprehensive_evaluation(n_iterations=10):
         #'multimodal',
         'two_moons',
         'rings',
+        "multimodal-5",
         "BLR",
         "BPR",
         "Weibull",
-        "multimodal-5",
         "Real-GMM2",
-        "Old-Faithful",
-        "Iris-3Class",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
     
     all_results = {}

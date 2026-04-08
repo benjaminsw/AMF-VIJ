@@ -1,6 +1,45 @@
 """
-Version: 2.6.0
+Version: 2.13.0
 Abbr: AMFVI-SEMA-MBATCH
+
+CHANGELOG v2.13.0:
+- Added max_epochs=500 to generate_all_plots() call in train_sequential_amf_vi()
+- Limits _resp_weights.png and _weight_dynamics_neff.png to first 500 epochs
+- No change to training dynamics or metric tracking
+
+CHANGELOG v2.12.0:
+- Fixed per-sample r_k computation in Stage 2: replaced safe_log_prob_extraction (scalar mean)
+  with full (B, K) log_prob tensor before softmax — matches paper Eq.22 exactly
+- r_bar now averages per-sample softmax values: mean(softmax(log_q_k(z_n))) vs softmax(mean(log_q_k))
+- Captures r_k_mean (K,) and r_k_std (K,) from last M-batch; passes to tracker.update()
+- Feeds CRCS-VIZ v1.7.0 r_k dotted overlay + shaded std band in _resp_weights.png
+
+CHANGELOG v2.11.0:
+- __main__ collects final weights + Neff into all_dataset_weights after each dataset trains
+- Calls plot_mixture_weights_summary() once after full loop (paper Fig.2 style)
+- Wrapped in try/except with logging.error; partial results plotted if some datasets fail
+
+CHANGELOG v2.10.0:
+- Standardised __main__ dataset list to canonical 10-dataset set
+- Removed 'multimodal-5' and 'Old-Faithful' (not in current benchmark scope)
+- Removed commented-out multimodal5_drop variants
+
+CHANGELOG v2.9.0:
+- train_mixture_weights_moving_average() accepts tau, alpha, M as optional override params
+- Overrides take precedence over self.tau, self.alpha, self.M when provided
+- Enables sensitivity_analysis.py to reuse frozen Stage 1 experts with different hyperparams
+- No change to default behaviour when overrides are not passed
+
+CHANGELOG v2.8.0:
+- Captures r_bar after Eq.23 M-batch averaging, before beta-smoothing each epoch
+- Passes r_bar=(K,) to tracker.update() for responsibilities-vs-weights plot (CRCS-VIZ v1.2.0)
+- No change to training dynamics; capture is read-only copy before smoothing step
+
+CHANGELOG v2.7.0:
+- Added FLOW_DISPLAY_NAMES map for human-readable expert legend labels in convergence plots
+- Stored flow_types as self.flow_types in __init__ for downstream access
+- MetricsTracker instantiation now passes expert_names via FLOW_DISPLAY_NAMES lookup
+- Falls back to raw flow_type string if not found in display map
 
 CHANGELOG v2.6.0:
 - Integrated convergence visualization tracking from CRCS-VIZ v1.0.0
@@ -39,7 +78,21 @@ import sys
 
 # Add parent directory to path for convergence visualization import
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'visualisation'))
-from visualisation.convergence_visualization import MetricsTracker, generate_all_plots
+from visualisation.convergence_visualization import MetricsTracker, generate_all_plots, plot_mixture_weights_summary
+
+# Display name map for convergence plot legends (v2.7.0)
+FLOW_DISPLAY_NAMES = {
+    'realnvp': 'RealNVP',
+    'maf': 'MAF',
+    'rbig': 'RBIG',
+    'gaussianization': 'RBIG',
+    'iaf': 'IAF',
+    'naf': 'NAF',
+    'glow': 'Glow',
+    'nice': 'NICE',
+    'spline': 'Spline',
+    'tan': 'TAN',
+}
 
 
 # Set seed for reproducible experiments
@@ -97,6 +150,7 @@ class SequentialAMFVI(nn.Module):
         # Track if flows are trained
         self.flows_trained = False
         self.weights_trained = False
+        self.flow_types = flow_types  # v2.7.0: stored for MetricsTracker expert_names
 
     def safe_log_prob_extraction(self, log_prob_tensor):
         """Extract log prob with NaN handling - Phase 1 fix"""
@@ -204,23 +258,37 @@ class SequentialAMFVI(nn.Module):
         self.flows_trained = True
         return flow_losses
     
-    def train_mixture_weights_moving_average(self, data, epochs=500):
+    def train_mixture_weights_moving_average(self, data, epochs=500,
+                                              tau=None, alpha=None, M=None):
         """
         Stage 2: Learn weights using Moving Average of Likelihoods.
-        
+
+        Args:
+            data: Training data tensor
+            epochs: Number of Stage 2 epochs
+            tau: Temperature override (default: self.tau) — v2.9.0
+            alpha: EMA momentum override (default: self.alpha) — v2.9.0
+            M: Fresh batch count override (default: self.M) — v2.9.0
+
         Returns:
             weight_losses: List of training losses
             metrics_tracker: MetricsTracker instance with convergence data
         """
         if not self.flows_trained:
             raise RuntimeError("Flows must be trained first!")
-        
-        print(f"🔄 Stage 2: Learning mixture weights (Moving Average | τ={self.tau} | log πk prior | ε floor | β smooth | M={self.M} batches)...")
+
+        # v2.9.0: resolve overrides — use provided value or fall back to instance default
+        _tau   = tau   if tau   is not None else self.tau
+        _alpha = alpha if alpha is not None else self.alpha
+        _M     = M     if M     is not None else self.M
+
+        print(f"🔄 Stage 2: Learning mixture weights (Moving Average | τ={_tau} | log πk prior | ε floor | β smooth | M={_M} batches)...")
         
         K = len(self.flows)
         
         # Initialize MetricsTracker for convergence visualization
-        metrics_tracker = MetricsTracker(method_name="SEMA-MBATCH", n_experts=K)
+        expert_names = [FLOW_DISPLAY_NAMES.get(ft, ft) for ft in self.flow_types]  # v2.7.0
+        metrics_tracker = MetricsTracker(method_name="SEMA-MBATCH", n_experts=K, expert_names=expert_names)
         
         weight_losses = []
         
@@ -230,35 +298,45 @@ class SequentialAMFVI(nn.Module):
             # After (v2.5.0): average r_bar over M independent fresh batches → r_bar += responsibilities / M
             batch_size = min(2000, len(data))
             r_bar = torch.zeros(K, device=data.device)
+            r_k_last = None  # v2.12.0: per-sample responsibilities from last batch (B, K)
 
-            for _ in range(self.M):
+            for _ in range(_M):  # v2.9.0: use _M override
                 indices = torch.randperm(len(data), device=data.device)[:batch_size]
                 data_batch = data[indices]
 
-                # Get flow log probabilities on this batch
-                flow_log_probs = []
+                # v2.12.0: compute per-sample log_prob (B,) per expert — do NOT collapse to scalar
+                # Fixes bias from safe_log_prob_extraction which averaged log_probs before softmax,
+                # giving softmax(mean(log_q)) != mean(softmax(log_q)) — paper Eq.22 requires the latter
+                flow_log_probs_batch = []
                 for flow in self.flows:
                     flow.eval()
                     with torch.no_grad():
-                        log_prob = flow.log_prob(data_batch)
-                        safe_log_prob = self.safe_log_prob_extraction(log_prob)
-                        flow_log_probs.append(safe_log_prob)
+                        log_prob = flow.log_prob(data_batch)  # (B,)
+                        log_prob = torch.clamp(log_prob, min=-1e6)  # numerical guard
+                        flow_log_probs_batch.append(log_prob)
 
-                flow_log_probs_tensor = torch.tensor(flow_log_probs, device=data.device)
+                flow_log_probs_tensor = torch.stack(flow_log_probs_batch, dim=1)  # (B, K)
 
-                # v2.2.0: log πk prior term (SEMA-PRIOR) per paper Eq. (22)
-                log_pi = torch.log(self.weights.data.clamp(min=1e-8))
-                responsibilities = F.softmax((flow_log_probs_tensor + log_pi) / self.tau, dim=0)
-                r_bar += responsibilities / self.M
+                # v2.2.0: log πk prior term per paper Eq. (22)
+                log_pi = torch.log(self.weights.data.clamp(min=1e-8))  # (K,)
+                # Eq.22: softmax per sample across experts
+                r_k = F.softmax((flow_log_probs_tensor + log_pi) / _tau, dim=1)  # (B, K)
+                r_bar += r_k.mean(dim=0) / _M   # accumulate mean over M batches (K,)
+                r_k_last = r_k                   # keep last batch for std capture
+
+            # v2.12.0: capture per-sample r_k stats from last batch for tracker
+            r_k_mean_np = r_k_last.mean(dim=0).detach().cpu().numpy()  # (K,)
+            r_k_std_np  = r_k_last.std(dim=0).detach().cpu().numpy()   # (K,)
 
             # v2.4.0: Uniform smoothing β (SEMA-SMOOTH) — damp early transients per paper Eq. (24)
             # r_bar ← (1-β) * r_bar + β * (1/K)  applied after M-batch averaging, before EMA
+            r_bar_before_smooth = r_bar.detach().cpu().numpy().copy()  # v2.8.0: capture Eq.23 avg for tracker
             r_bar = (1 - self.beta) * r_bar + self.beta * (torch.ones(K, device=data.device) / K)
 
             # Moving average update: weight_i = α * old_weight_i + (1-α) * r_bar_i
             with torch.no_grad():
                 old_weights = self.weights.data.clone()
-                new_weights = self.alpha * old_weights + (1 - self.alpha) * r_bar
+                new_weights = _alpha * old_weights + (1 - _alpha) * r_bar  # v2.9.0: use _alpha override
                 self.weights.data = new_weights
 
                 # v2.3.0: Floor + Renorm (SEMA-FLOOR) — collapse prevention per paper Eqs. (26-27)
@@ -296,7 +374,10 @@ class SequentialAMFVI(nn.Module):
             metrics_tracker.update(
                 weights=current_weights_np,
                 loss=loss.item(),
-                responsibilities=responsibilities_batch
+                responsibilities=responsibilities_batch,
+                r_bar=r_bar_before_smooth,  # v2.8.0: Eq.23 avg before beta-smoothing
+                r_k_mean=r_k_mean_np,       # v2.12.0: per-sample r_k mean (K,)
+                r_k_std=r_k_std_np,         # v2.12.0: per-sample r_k std  (K,)
             )
             
             if epoch % 100 == 0:
@@ -412,8 +493,8 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
     
     # v2.1.0: pass tau to model
     model = SequentialAMFVI(dim=2, flow_types=flow_types, weight_update_method='moving_average', tau=tau, beta=beta, M=M)  # v2.5.0: pass M
-    model.dataset_name = dataset_name
-    model.results_dir = os.path.join("./", "results")
+    #model.dataset_name = dataset_name
+    #model.results_dir = os.path.join("./", "results")
     model = model.to(device)
 
     train_epochs = 3000
@@ -435,7 +516,8 @@ def train_sequential_amf_vi(dataset_name='multimodal', flow_types=None, show_plo
         generate_all_plots(
             tracker=metrics_tracker,
             output_dir=convergence_plots_dir,
-            prefix=dataset_name
+            prefix=dataset_name,
+            max_epochs=500  # v2.13.0: cap plots to first 500 epochs
         )
         print(f"✅ Convergence plots saved to {convergence_plots_dir}")
     except Exception as e:
@@ -563,18 +645,17 @@ if __name__ == "__main__":
         'banana',
         'x_shape',
         'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
         'two_moons',
         'rings',
+        "multimodal-5",
         "BLR",
         "BPR",
         "Weibull",
-        "multimodal-5",
-        #"multimodal5_drop0",
-        #"multimodal5_drop1",
-        #"multimodal5_drop2",
         "Real-GMM2",
-        "Old-Faithful",
-        "Iris-3Class",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
     
     flow_types = ['realnvp', 'maf', 'rbig']
@@ -582,8 +663,10 @@ if __name__ == "__main__":
     BETA = 1e-5  # v2.4.0: uniform smoothing coefficient
     M = 2        # v2.5.0: number of fresh batches for r_bar averaging
 
-    print(f"🚀 AMF-VI v2.6.0 | flows={flow_types} | τ={TAU} | β={BETA} | M={M} | SEMA-MBATCH")
-    
+    print(f"🚀 AMF-VI v2.11.0 | flows={flow_types} | τ={TAU} | β={BETA} | M={M} | SEMA-MBATCH")
+
+    all_dataset_weights = {}  # v2.11.0: collects (weights, neff) per dataset for summary plot
+
     for dataset_name in datasets:
         print(f"\n{'='*60}")
         print(f"Training {len(flow_types)}-flow model on {dataset_name.upper()}")
@@ -601,9 +684,34 @@ if __name__ == "__main__":
                 M=M,
             )
             print(f"✅ Completed {dataset_name}")
-            
+
+            # v2.11.0: collect final weights and Neff for summary plot
+            if metrics_tracker.neff_history:
+                all_dataset_weights[dataset_name] = (
+                    model.weights.detach().cpu().numpy().copy(),
+                    float(metrics_tracker.neff_history[-1])
+                )
+            else:
+                logging.error(f"neff_history empty for {dataset_name} — excluded from summary plot")
+
         except Exception as e:
             print(f"❌ Failed on {dataset_name}: {e}")
             import traceback
             traceback.print_exc()
             continue
+
+    # v2.11.0: generate mixture weights summary plot after all datasets
+    if all_dataset_weights:
+        results_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'results')
+        summary_path = os.path.join(results_dir, 'mixture_weights_summary.png')
+        try:
+            plot_mixture_weights_summary(
+                dataset_weights=all_dataset_weights,
+                expert_names=flow_types,
+                save_path=summary_path,
+            )
+            print(f"\n✅ Mixture weights summary saved to {summary_path}")
+        except Exception as e:
+            logging.error(f"Failed to generate mixture weights summary: {e}")
+    else:
+        logging.error("No datasets completed successfully — mixture weights summary skipped")

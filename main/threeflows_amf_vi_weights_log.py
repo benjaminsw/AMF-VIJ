@@ -645,11 +645,13 @@ if __name__ == "__main__":
         #'multimodal',
         'two_moons',
         'rings',
+        "multimodal-5",
         "BLR",
         "BPR",
         "Weibull",
-        "multimodal-5",
         "Real-GMM2",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
     
     flow_types = ['realnvp', 'maf', 'rbig']

@@ -1,15 +1,12 @@
 """
-File: evaluate_threeflows_amf_vi_weights_log.py | Version: 1.1.0 | Date: 2026-03-10
+File: evaluate_threeflows_amf_vi_weights_log.py | Version: 1.2.0 | Date: 2026-03-13
 Abbr: EVAL-WEIGHTS-LOG
 
-CHANGELOG v1.1.0:
-- compute_kl_divergence_metric: signature changed from (target, flow_model, dataset_name)
-  to (target_samples, generated_samples, dataset_name) — accepts pre-sampled tensors
-  to support bootstrap resampling in eval_10_iters.py
-- Replaced get_test_data import with get_split_data; test data loaded via split_data['test']
-- Added logging throughout; replaced bare print calls with logging.info/error
-- Updated dataset list in comprehensive_sequential_evaluation: 10 → 12 (+Old-Faithful, +Iris-3Class)
-- Added logging.basicConfig at module level
+CHANGELOG v1.2.0:
+- compute_kl_divergence_metric: removed dead histogram fallback call and commented-out
+  compute_kl_divergence_histogram function; KDE failure now returns None with logging.error
+- Fallback was broken (function wrapped in triple-quotes, undefined at runtime); clean failure
+  with None return is safer and consistent with other metric error handling in this file
 """
 
 import torch
@@ -63,44 +60,7 @@ def compute_kl_divergence_metric(target_samples, generated_samples, dataset_name
         return kl_divergence
     except Exception as e:
         logging.error(f"KDE-based KL divergence failed for {dataset_name}: {e}")
-        logging.info("Falling back to histogram-based method...")
-        return compute_kl_divergence_histogram(target_samples, generated_samples)
-
-'''
-def compute_kl_divergence_histogram(target_samples, generated_samples):
-    """Compute KL divergence between target and generated samples using histogram method."""
-    target_np = target_samples.detach().cpu().numpy()
-    generated_np = generated_samples.detach().cpu().numpy()
-    
-    # Simple histogram-based KL divergence estimation
-    bins = 50
-    
-    # Get data range
-    x_min = min(target_np[:, 0].min(), generated_np[:, 0].min())
-    x_max = max(target_np[:, 0].max(), generated_np[:, 0].max())
-    y_min = min(target_np[:, 1].min(), generated_np[:, 1].min())
-    y_max = max(target_np[:, 1].max(), generated_np[:, 1].max())
-    
-    # Create histograms
-    hist_target, _, _ = np.histogram2d(target_np[:, 0], target_np[:, 1], 
-                                       bins=bins, range=[[x_min, x_max], [y_min, y_max]])
-    hist_generated, _, _ = np.histogram2d(generated_np[:, 0], generated_np[:, 1], 
-                                          bins=bins, range=[[x_min, x_max], [y_min, y_max]])
-    
-    # Normalize to probabilities
-    hist_target = hist_target / hist_target.sum()
-    hist_generated = hist_generated / hist_generated.sum()
-    
-    # Add small epsilon to avoid log(0)
-    epsilon = 1e-10
-    hist_target = hist_target + epsilon
-    hist_generated = hist_generated + epsilon
-    
-    # Compute KL divergence
-    kl_div = np.sum(hist_target * np.log(hist_target / hist_generated))
-    
-    return kl_div
-'''
+        return None
 
 def evaluate_individual_flows(model, test_data, flow_names, dataset_name):
     """Evaluate each individual flow against test data."""
@@ -221,9 +181,20 @@ def comprehensive_sequential_evaluation():
     
     # Define datasets to evaluate
     datasets = [
-        'banana', 'x_shape', 'bimodal_shared', 'two_moons', 'rings',
-        "BLR", "BPR", "Weibull", "multimodal-5", "Real-GMM2",
-        "Old-Faithful", "Iris-3Class",
+        'banana',
+        'x_shape',
+        'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
+        'two_moons',
+        'rings',
+        "multimodal-5",
+        "BLR",
+        "BPR",
+        "Weibull",
+        "Real-GMM2",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
     
     all_results = {}

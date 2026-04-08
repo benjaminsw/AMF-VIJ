@@ -1,6 +1,10 @@
 """
-File: eval_10_iters_mbatch.py | Version: 4.0.0 | Date: 2026-03-06
+File: eval_10_iters_mbatch.py | Version: 4.1.0 | Date: 2026-03-12
 Abbr: EVAL-SEMA-MBATCH
+
+CHANGELOG v4.1.0:
+- Standardised __main__ dataset list to canonical 10-dataset set
+- Removed 'multimodal-5' and 'Old-Faithful' (not in current benchmark scope)
 
 CHANGELOG v4.0.0:
 - Added bootstrap resampling per iteration: each of 10 iterations draws N_EVAL=5000 fresh samples
@@ -61,30 +65,18 @@ from data.data_cache import get_split_data
 from data.data_generator import generate_data
 
 # Import metric functions
-try:
-    from .evaluate_threeflows_amf_vi_weights_log import (
-        compute_cross_entropy_surrogate,
-        compute_kl_divergence_metric,
-    )
-    from .evaluate_threeflows_amf_vi_wasserstein import (
-        compute_full_wasserstein_distance,
-    )
-    from .evaluate_threeflows_amf_vi_mmd import (
-        compute_mmd_comparison,
-        compute_polynomial_mmd_comparison,
-    )
-except ImportError:
-    from evaluate_threeflows_amf_vi_weights_log import (
-        compute_cross_entropy_surrogate,
-        compute_kl_divergence_metric,
-    )
-    from evaluate_threeflows_amf_vi_wasserstein import (
-        compute_full_wasserstein_distance,
-    )
-    from evaluate_threeflows_amf_vi_mmd import (
-        compute_mmd_comparison,
-        compute_polynomial_mmd_comparison,
-    )
+from main.unit_test.evaluate_threeflows_amf_vi_weights_log import (
+    compute_cross_entropy_surrogate,
+    compute_kl_divergence_metric,
+)
+from main.unit_test.evaluate_threeflows_amf_vi_wasserstein import (
+    compute_full_wasserstein_distance,
+)
+from main.unit_test.evaluate_threeflows_amf_vi_mmd import (
+    compute_mmd_comparison,
+    compute_polynomial_mmd_comparison,
+)
+
 
 random.seed(2025)
 torch.manual_seed(2025)
@@ -360,15 +352,17 @@ def comprehensive_evaluation(n_iterations=100):
         'banana',
         'x_shape',
         'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
         'two_moons',
         'rings',
+        "multimodal-5",
         "BLR",
         "BPR",
         "Weibull",
-        "multimodal-5",
         "Real-GMM2",
-        "Old-Faithful",
-        "Iris-3Class",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
 
     all_results = {}

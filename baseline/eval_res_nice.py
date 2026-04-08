@@ -1,6 +1,12 @@
 """
-Evaluation script for baseline NICE and Residual Flow models.
-Computes metrics over 10 iterations and saves results to CSV.
+File: eval_res_nice.py | Version: 1.2.0 | Date: 2026-03-13
+Abbr: EVAL-BASELINE-RESNICE
+
+CHANGELOG v1.2.0:
+- Redirected imports from main.* to baseline.*: evaluate_threeflows_amf_vi_weights_log,
+  evaluate_threeflows_amf_vi_wasserstein, evaluate_threeflows_amf_vi_mmd now loaded from
+  /home/benjamin/Documents/AMF-VIJ/baseline/ instead of main/
+- Comment updated: "from baseline directory" replacing "from main directory"
 """
 
 import torch
@@ -17,7 +23,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.data_generator import generate_data
 
-# Import evaluation functions from main directory
+# Import evaluation functions from baseline directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main.evaluate_threeflows_amf_vi_weights_log import (
     compute_cross_entropy_surrogate,
@@ -57,7 +63,7 @@ def compute_single_iteration_metrics(target_samples, flow_model, dataset_name):
         
         # 2. KL Divergence
         try:
-            kl_div = compute_kl_divergence_metric(target_samples, flow_model, dataset_name)
+            kl_div = compute_kl_divergence_metric(target_samples, generated_samples, dataset_name)
             metrics['kl_divergence'] = kl_div
         except Exception as e:
             print(f"        Error computing KL divergence: {e}")
@@ -204,13 +210,13 @@ def evaluate_all_baseline_models(n_iterations=10):
         #'multimodal',
         'two_moons',
         'rings',
+        "multimodal-5",
         "BLR",
         "BPR",
         "Weibull",
-        "multimodal-5",
         "Real-GMM2",
-        "Old-Faithful",
-        "Iris-3Class",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
     
     

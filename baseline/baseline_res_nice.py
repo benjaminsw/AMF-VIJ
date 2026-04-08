@@ -197,13 +197,13 @@ if __name__ == "__main__":
         #'multimodal',
         'two_moons',
         'rings',
+        "multimodal-5",
         "BLR",
         "BPR",
         "Weibull",
-        "multimodal-5",
         "Real-GMM2",
-        "Old-Faithful",
-        "Iris-3Class",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

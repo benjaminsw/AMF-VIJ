@@ -171,8 +171,22 @@ def evaluate_single_sequential_dataset_wasserstein(dataset_name,
 def comprehensive_wasserstein_evaluation():
     """Comprehensive Wasserstein evaluation of all datasets (standalone)."""
 
-    datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different',
-                'multimodal', 'two_moons', 'rings']
+    datasets = [
+        'banana',
+        'x_shape',
+        'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
+        'two_moons',
+        'rings',
+        "multimodal-5",
+        "BLR",
+        "BPR",
+        "Weibull",
+        "Real-GMM2",
+        #"Old-Faithful",
+        #"Iris-3Class",
+    ]
     all_results = {}
 
     for dataset_name in datasets:

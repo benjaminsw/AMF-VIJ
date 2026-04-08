@@ -173,10 +173,22 @@ def comprehensive_wasserstein_evaluation():
     """Comprehensive Wasserstein evaluation of all datasets."""
     
     datasets = [
-        'banana', 'x_shape', 'bimodal_shared', 'two_moons', 'rings',
-        "BLR", "BPR", "Weibull", "multimodal-5", "Real-GMM2",
-        "Old-Faithful", "Iris-3Class",
+        'banana',
+        'x_shape',
+        'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
+        'two_moons',
+        'rings',
+        "multimodal-5",
+        "BLR",
+        "BPR",
+        "Weibull",
+        "Real-GMM2",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
+    
     all_results = {}
     
     # Evaluate each dataset

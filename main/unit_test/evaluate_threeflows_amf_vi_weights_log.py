@@ -203,8 +203,22 @@ def evaluate_single_sequential_dataset(dataset_name, target_samples=None, genera
 def comprehensive_sequential_evaluation():
     """Comprehensive evaluation of all Sequential AMF-VI models (standalone)."""
 
-    datasets = ['banana', 'x_shape', 'bimodal_shared', 'bimodal_different',
-                'multimodal', 'two_moons', 'rings']
+    datasets = [
+        'banana',
+        'x_shape',
+        'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
+        'two_moons',
+        'rings',
+        "multimodal-5",
+        "BLR",
+        "BPR",
+        "Weibull",
+        "Real-GMM2",
+        #"Old-Faithful",
+        #"Iris-3Class",
+    ]
     all_results = {}
 
     for dataset_name in datasets:

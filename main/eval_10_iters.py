@@ -297,18 +297,17 @@ def comprehensive_evaluation(n_iterations=100):
         'banana',
         'x_shape',
         'bimodal_shared',
+        #'bimodal_different',
+        #'multimodal',
         'two_moons',
         'rings',
+        "multimodal-5",
         "BLR",
         "BPR",
         "Weibull",
-        "multimodal-5",
-        #"multimodal5_drop0",
-        #"multimodal5_drop1",
-        #"multimodal5_drop2",
         "Real-GMM2",
-        "Old-Faithful",
-        "Iris-3Class",
+        #"Old-Faithful",
+        #"Iris-3Class",
     ]
     # datasets = ['multimodal']
     all_results = {}
